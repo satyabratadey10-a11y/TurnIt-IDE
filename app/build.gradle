@@ -14,7 +14,6 @@ android {
         versionCode 1
         versionName "1.0"
         
-        // Tells Gradle to compile the C++ code for modern devices
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
@@ -32,7 +31,17 @@ android {
         }
     }
     
-    // Enable Jetpack Compose
+    // Explicitly bind Java to Version 17
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    // Explicitly bind Kotlin to Version 17
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    
     buildFeatures {
         compose true
     }
@@ -40,7 +49,6 @@ android {
         kotlinCompilerExtensionVersion '1.5.8'
     }
     
-    // Link the C++ build script
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
@@ -58,4 +66,9 @@ dependencies {
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
+    
+    // Phase 1 Extraction & Async Dependencies
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
 }
