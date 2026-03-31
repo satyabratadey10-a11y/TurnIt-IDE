@@ -23,15 +23,19 @@ jobs:
         wget -q -O p7zip.tar.bz2 https://sourceforge.net/projects/p7zip/files/p7zip/16.02/p7zip_16.02_src_all.tar.bz2
         tar -xf p7zip.tar.bz2
         cd p7zip_16.02
-        cp makefile.linux_arm64 makefile.machine
+        
+        # Use the generic CPU makefile
+        cp makefile.linux_any_cpu makefile.machine
         
         echo "Cross-compiling for Android ARM64..."
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export TARGET=aarch64-linux-android26
         
+        # Override CC and CXX with NDK paths
         make 7zr \
           CC="$TOOLCHAIN/bin/$TARGET-clang" \
-          CXX="$TOOLCHAIN/bin/$TARGET-clang++"
+          CXX="$TOOLCHAIN/bin/$TARGET-clang++" \
+          STRIP="$TOOLCHAIN/bin/llvm-strip"
           
         echo "Injecting native binary into APK..."
         mkdir -p $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a
