@@ -1,0 +1,50 @@
+name: TurnIt-IDE Native Build
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+        
+    - name: Compile lib7zr.so (Android ARM64) via NDK
+      run: |
+        echo "Downloading p7zip source..."
+        wget -q -O p7zip.tar.bz2 https://sourceforge.net/projects/p7zip/files/p7zip/16.02/p7zip_16.02_src_all.tar.bz2
+        tar -xf p7zip.tar.bz2
+        cd p7zip_16.02
+        cp makefile.linux_arm64 makefile.machine
+        
+        echo "Cross-compiling for Android ARM64..."
+        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+        export TARGET=aarch64-linux-android26
+        
+        make 7zr \
+          CC="$TOOLCHAIN/bin/$TARGET-clang" \
+          CXX="$TOOLCHAIN/bin/$TARGET-clang++"
+          
+        echo "Injecting native binary into APK..."
+        mkdir -p $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a
+        cp bin/7zr $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/lib7zr.so
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Build Debug APK (Kotlin + C++ JNI)
+      run: ./gradlew :app:assembleDebug
+
+    - name: Upload IDE APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: TurnIt-IDE-Debug-Build
+        path: app/build/outputs/apk/debug/app-debug.apk
