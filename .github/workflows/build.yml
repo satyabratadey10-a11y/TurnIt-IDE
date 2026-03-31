@@ -24,6 +24,9 @@ jobs:
         tar -xf p7zip.tar.bz2
         cd p7zip_16.02
         
+        echo "Patching Bionic libc missing getpass..."
+        sed -i 's/getpass("")/""/g' CPP/7zip/UI/Console/UserInputUtils.cpp
+        
         # Use the generic CPU makefile
         cp makefile.linux_any_cpu makefile.machine
         
