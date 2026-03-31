@@ -30,6 +30,10 @@ jobs:
         # Use the generic CPU makefile
         cp makefile.linux_any_cpu makefile.machine
         
+        echo "Patching Android NDK Linker (Removing -lpthread and -lrt)..."
+        sed -i 's/-lpthread//g' makefile.machine
+        sed -i 's/-lrt//g' makefile.machine
+        
         echo "Cross-compiling for Android ARM64..."
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export TARGET=aarch64-linux-android26
