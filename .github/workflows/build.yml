@@ -34,10 +34,10 @@ jobs:
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export TARGET=aarch64-linux-android26
         
-        # Override CC and CXX with NDK paths
+        # Override CC and CXX with NDK paths AND inject the C++11 narrowing bypass
         make 7zr \
           CC="$TOOLCHAIN/bin/$TARGET-clang" \
-          CXX="$TOOLCHAIN/bin/$TARGET-clang++" \
+          CXX="$TOOLCHAIN/bin/$TARGET-clang++ -Wno-c++11-narrowing" \
           STRIP="$TOOLCHAIN/bin/llvm-strip"
           
         echo "Injecting native binary into APK..."
