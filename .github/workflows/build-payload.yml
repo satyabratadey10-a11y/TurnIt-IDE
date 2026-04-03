@@ -1,0 +1,27 @@
+name: Build Toolchain Payload
+
+on:
+  workflow_dispatch: # Allows you to trigger this manually
+
+jobs:
+  build-rootfs:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download Ubuntu ARM64 Base
+      run: |
+        wget -q -O ubuntu-base.tar.gz http://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz
+        mkdir rootfs
+        tar -xf ubuntu-base.tar.gz -C rootfs
+        
+    - name: Compress to toolchain-arm64.7z (LZMA2)
+      run: |
+        sudo apt-get install p7zip-full -y
+        # Compress rootfs folder using ultra compression
+        7z a -t7z -m0=lzma2 -mx=9 toolchain-arm64.7z ./rootfs/*
+        
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0-toolchain
+        files: toolchain-arm64.7z
+        token: ${{ secrets.GITHUB_TOKEN }}
