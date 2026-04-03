@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuOpen
@@ -36,7 +39,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,14 +50,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.engine.ShellEngine
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
-// Typed entry so forEach has no Iterable/Map ambiguity
 private data class PaneEntry(
     val pane:  IdePane,
     val label: String,
@@ -74,7 +81,39 @@ fun MainShellScreen(
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope       = rememberCoroutineScope()
+    val context     = LocalContext.current
     var activePane  by remember { mutableStateOf(IdePane.TERMINAL) }
+
+    // Phase 3: Live Terminal State
+    val shellEngine = remember { ShellEngine(context) }
+    val consoleLogs = remember { mutableStateListOf("TurnIt IDE Shell Engine (v1.0)\n", "Waiting for command...\n") }
+    var activeJob   by remember { mutableStateOf<Job?>(null) }
+    var isRunning   by remember { mutableStateOf(false) }
+
+    // Hardcoded test command to verify compilers are working in PRoot
+    val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
+
+    val handleRunClick = {
+        if (!isRunning) {
+            isRunning = true
+            activePane = IdePane.TERMINAL // Force UI to terminal tab
+            consoleLogs.add("\n$ root $testCompileCommand\n")
+            activeJob = scope.launch {
+                shellEngine.execute(testCompileCommand).collect { outputLine ->
+                    consoleLogs.add(outputLine)
+                }
+                isRunning = false
+            }
+        }
+    }
+
+    val handleStopClick = {
+        if (isRunning) {
+            activeJob?.cancel()
+            consoleLogs.add("\n[Process Killed by User]\n")
+            isRunning = false
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState   = drawerState,
@@ -95,9 +134,9 @@ fun MainShellScreen(
                     activePane     = activePane,
                     onMenuClick    = { scope.launch { drawerState.open() } },
                     onPaneSelect   = { activePane = it },
-                    onRun          = onRunBuild,
-                    onStop         = onStopBuild,
-                    isBuildRunning = isBuildRunning
+                    onRun          = handleRunClick,
+                    onStop         = handleStopClick,
+                    isBuildRunning = isRunning
                 )
             }
         ) { pad ->
@@ -107,11 +146,41 @@ fun MainShellScreen(
                     .padding(pad)
             ) {
                 when (activePane) {
-                    IdePane.TERMINAL  -> TerminalPanePlaceholder()
+                    IdePane.TERMINAL  -> TerminalConsoleView(consoleLogs)
                     IdePane.EDITOR    -> EditorPanePlaceholder()
                     IdePane.FILE_TREE -> FileTreePanePlaceholder()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TerminalConsoleView(logs: List<String>) {
+    val listState = rememberLazyListState()
+
+    // Auto-scroll to bottom on new logs
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) {
+            listState.animateScrollToItem(logs.size - 1)
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IdeColors.Bg)
+            .padding(8.dp)
+    ) {
+        items(logs) { line ->
+            Text(
+                text = line,
+                color = IdeColors.TextSecondary,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 14.sp
+            )
         }
     }
 }
@@ -191,7 +260,6 @@ private fun PaneTabStrip(
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Explicit typed list of Pairs avoids Iterable/Map ambiguity
         val tabs: List<Pair<IdePane, String>> = listOf(
             IdePane.TERMINAL  to "TERMINAL",
             IdePane.EDITOR    to "EDITOR",
@@ -225,7 +293,7 @@ private fun PaneTab(
             .height(26.dp)
             .background(bg, RoundedCornerShape(4.dp))
             .border(1.dp, border, RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick)        // fixed: proper foundation.clickable
+            .clickable(onClick = onClick)
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -273,7 +341,6 @@ private fun IdeDrawerContent(
             unselectedIconColor      = IdeColors.TextMuted
         )
 
-        // Typed list: explicit List<PaneEntry> eliminates forEach ambiguity
         PANE_ENTRIES.forEach { entry ->
             NavigationDrawerItem(
                 icon     = {
@@ -293,19 +360,12 @@ private fun IdeDrawerContent(
 }
 
 @Composable
-private fun TerminalPanePlaceholder() =
-    PlaceholderPane("[terminal] Phase 3: TerminalConsoleView",
-        IdeColors.AccentGreen)
-
-@Composable
 private fun EditorPanePlaceholder() =
-    PlaceholderPane("[editor] Phase 4: CodeEditorView",
-        IdeColors.AccentBlue)
+    PlaceholderPane("[editor] Phase 4: CodeEditorView", IdeColors.AccentBlue)
 
 @Composable
 private fun FileTreePanePlaceholder() =
-    PlaceholderPane("[files] Phase 4: FileTreePanel",
-        IdeColors.AccentPurple)
+    PlaceholderPane("[files] Phase 4: FileTreePanel", IdeColors.AccentPurple)
 
 @Composable
 private fun PlaceholderPane(label: String, accent: Color) {
