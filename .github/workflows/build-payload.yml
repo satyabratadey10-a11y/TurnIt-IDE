@@ -82,13 +82,10 @@ jobs:
 
     - name: Compress RootFS (LZMA2 Maximum Compression)
       run: |
-        echo "Cleaning ephemeral Linux sockets and broken symlinks..."
-        sudo rm -rf rootfs/run/* rootfs/var/run/* rootfs/tmp/* rootfs/var/tmp/*
-        
         echo "Packing filesystem into 7z archive. This will take a few minutes..."
-        # 7-Zip returns exit code 1 for non-fatal warnings (like harmless broken symlinks).
-        # We catch it so GitHub Actions doesn't fail the entire build.
-        sudo 7z a -t7z -m0=lzma2 -mx=9 toolchain-arm64.7z ./rootfs/* || if [ $? -eq 1 ]; then exit 0; else exit $?; fi
+        # We use -x to safely ignore ephemeral Linux sockets instead of deleting them.
+        # We also catch Exit Code 1 so non-fatal symlink warnings don't fail the build.
+        sudo 7z a -t7z -m0=lzma2 -mx=9 toolchain-arm64.7z ./rootfs/* -x!rootfs/run/* -x!rootfs/var/run/* -x!rootfs/tmp/* -x!rootfs/var/tmp/* || if [ $? -eq 1 ]; then exit 0; else exit $?; fi
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
