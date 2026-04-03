@@ -17,7 +17,7 @@ jobs:
 
     - name: Download Ubuntu 24.04 ARM64 Base
       run: |
-        wget -q -O ubuntu-base.tar.gz http://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz
+        wget -q -O ubuntu-base.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.3-base-arm64.tar.gz
         mkdir rootfs
         sudo tar -xpf ubuntu-base.tar.gz -C rootfs/
         # Inject QEMU binary so x86 server can execute ARM64 bash
