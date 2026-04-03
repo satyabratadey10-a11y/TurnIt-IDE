@@ -1,27 +1,96 @@
-name: Build Toolchain Payload
+name: Build Universal ARM64 Toolchain Payload
 
 on:
-  workflow_dispatch: # Allows you to trigger this manually
+  workflow_dispatch: # Manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write # Required to publish the GitHub Release
 
 jobs:
   build-rootfs:
     runs-on: ubuntu-latest
     steps:
-    - name: Download Ubuntu ARM64 Base
+    - name: Install QEMU Emulator & 7-Zip
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static binfmt-support p7zip-full
+
+    - name: Download Ubuntu 24.04 ARM64 Base
       run: |
         wget -q -O ubuntu-base.tar.gz http://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-arm64.tar.gz
         mkdir rootfs
-        tar -xf ubuntu-base.tar.gz -C rootfs
-        
-    - name: Compress to toolchain-arm64.7z (LZMA2)
+        sudo tar -xpf ubuntu-base.tar.gz -C rootfs/
+        # Inject QEMU binary so x86 server can execute ARM64 bash
+        sudo cp /usr/bin/qemu-aarch64-static rootfs/usr/bin/
+        # Copy DNS resolver so apt-get has internet access
+        sudo cp /etc/resolv.conf rootfs/etc/
+
+    - name: Write ARM64 Chroot Setup Script
       run: |
-        sudo apt-get install p7zip-full -y
-        # Compress rootfs folder using ultra compression
-        7z a -t7z -m0=lzma2 -mx=9 toolchain-arm64.7z ./rootfs/*
+        cat << 'CHROOT_EOF' > rootfs/setup.sh
+        #!/bin/bash
+        export DEBIAN_FRONTEND=noninteractive
         
+        echo "Updating ARM64 Ubuntu repositories..."
+        apt-get update
+        
+        echo "Installing core compilers & build tools..."
+        apt-get install -y \
+            openjdk-21-jdk \
+            clang \
+            cmake \
+            scons \
+            autoconf \
+            automake \
+            libtool \
+            make \
+            git \
+            wget \
+            unzip \
+            nano
+
+        echo "Installing Gradle 8.6..."
+        wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
+        unzip -q gradle-8.6-bin.zip -d /opt/
+        mv /opt/gradle-8.6 /opt/gradle
+        ln -s /opt/gradle/bin/gradle /usr/bin/gradle
+
+        echo "Installing Android SDK Command Line Tools..."
+        mkdir -p /opt/android-sdk/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        unzip -q commandlinetools-linux-* -d /opt/android-sdk/cmdline-tools
+        mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+
+        echo "Installing Native ARM64 Android NDK (r26b)..."
+        # Using community-compiled ARM64 host binaries for Termux compatibility
+        mkdir -p /opt/android-sdk/ndk
+        wget -q https://github.com/Lzhiyong/termux-ndk/releases/download/cxx-compiler/android-ndk-r26b-aarch64.zip
+        unzip -q android-ndk-r26b-aarch64.zip -d /opt/android-sdk/ndk/
+        mv /opt/android-sdk/ndk/android-ndk-r26b /opt/android-sdk/ndk/26.2.11381458
+
+        echo "Cleaning up temp files to reduce payload size..."
+        apt-get clean
+        rm -rf /var/lib/apt/lists/* /*.zip
+        CHROOT_EOF
+        sudo chmod +x rootfs/setup.sh
+
+    - name: Execute Setup Script inside Emulated ARM64 RootFS
+      run: |
+        sudo chroot rootfs /bin/bash /setup.sh
+        # Remove QEMU binary and script before packing
+        sudo rm rootfs/setup.sh rootfs/usr/bin/qemu-aarch64-static
+
+    - name: Compress RootFS (LZMA2 Maximum Compression)
+      run: |
+        echo "Packing filesystem into 7z archive. This will take a few minutes..."
+        # -mx=9 is ultra compression. Preserves symlinks and file permissions.
+        sudo 7z a -t7z -m0=lzma2 -mx=9 toolchain-arm64.7z ./rootfs/*
+
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0-toolchain
+        name: TurnIt IDE Toolchain v1.0
+        body: "Pre-compiled Ubuntu 24.04 ARM64 RootFS containing NDK r26b, SDK, JDK 21, Clang, CMake, SCons, and Gradle."
         files: toolchain-arm64.7z
         token: ${{ secrets.GITHUB_TOKEN }}
