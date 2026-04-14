@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuOpen
 import androidx.compose.material.icons.filled.FolderOpen
@@ -147,7 +148,7 @@ fun MainShellScreen(
             ) {
                 when (activePane) {
                     IdePane.TERMINAL  -> TerminalConsoleView(consoleLogs)
-                    IdePane.EDITOR    -> EditorPanePlaceholder()
+                    IdePane.EDITOR    -> CodeEditorView()
                     IdePane.FILE_TREE -> FileTreePanePlaceholder()
                 }
             }
@@ -182,6 +183,56 @@ private fun TerminalConsoleView(logs: List<String>) {
                 lineHeight = 14.sp
             )
         }
+    }
+}
+
+@Composable
+private fun CodeEditorView() {
+    var text by remember { mutableStateOf("fun main() {\n    println(\"Hello TurnIt!\")\n}") }
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IdeColors.Bg)
+    ) {
+        // --- LEFT GUTTER: Line Numbers ---
+        Box(
+            modifier = Modifier
+                .background(IdeColors.BgSurface)
+                .fillMaxHeight()
+                .width(48.dp)
+                .padding(8.dp),
+            contentAlignment = Alignment.TopStart
+        ) {
+            LazyColumn {
+                items(30) { lineNumber ->
+                    Text(
+                        text = (lineNumber + 1).toString(),
+                        color = IdeColors.TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 14.sp,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // --- RIGHT SIDE: Code Editor ---
+        BasicTextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Transparent)
+                .padding(8.dp),
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = IdeColors.TextPrimary,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 14.sp
+            )
+        )
     }
 }
 
@@ -358,10 +409,6 @@ private fun IdeDrawerContent(
         }
     }
 }
-
-@Composable
-private fun EditorPanePlaceholder() =
-    PlaceholderPane("[editor] Phase 4: CodeEditorView", IdeColors.AccentBlue)
 
 @Composable
 private fun FileTreePanePlaceholder() =
