@@ -13,6 +13,7 @@ import com.turnit.ide.engine.DownloadEngine
 import com.turnit.ide.engine.DownloadState
 import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ExtractionState
+import com.turnit.ide.ui.LoginScreen
 import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.SetupPhase
 import com.turnit.ide.ui.SetupScreen
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TurnItIdeTheme {
+                var isAuthenticated by remember { mutableStateOf(false) }
                 var phase by remember {
                     mutableStateOf<SetupPhase>(
                         if (extractionEngine.isRootfsPresent())
@@ -51,22 +53,28 @@ class MainActivity : ComponentActivity() {
                 }
                 var isBuildRunning by remember { mutableStateOf(false) }
 
-                if (phase == SetupPhase.Complete) {
-                    MainShellScreen(
-                        isBuildRunning = isBuildRunning,
-                        onRunBuild     = { isBuildRunning = true  },
-                        onStopBuild    = { isBuildRunning = false }
+                if (!isAuthenticated) {
+                    LoginScreen(
+                        onLoginSuccess = { isAuthenticated = true }
                     )
                 } else {
-                    SetupScreen(
-                        phase        = phase,
-                        onStartSetup = { startSetup { phase = it } },
-                        onRetry      = {
-                            phase = SetupPhase.Welcome
-                            extractionEngine.purgeRootfs()
-                        },
-                        onLaunchIde  = { phase = SetupPhase.Complete }
-                    )
+                    if (phase == SetupPhase.Complete) {
+                        MainShellScreen(
+                            isBuildRunning = isBuildRunning,
+                            onRunBuild     = { isBuildRunning = true  },
+                            onStopBuild    = { isBuildRunning = false }
+                        )
+                    } else {
+                        SetupScreen(
+                            phase        = phase,
+                            onStartSetup = { startSetup { phase = it } },
+                            onRetry      = {
+                                phase = SetupPhase.Welcome
+                                extractionEngine.purgeRootfs()
+                            },
+                            onLaunchIde  = { phase = SetupPhase.Complete }
+                        )
+                    }
                 }
             }
         }
