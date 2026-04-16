@@ -1,11 +1,15 @@
 package com.turnit.ide.engine
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class ExtractionEngine {
+    companion object {
+        private const val TAG = "ExtractionEngine"
+    }
 
     suspend fun bootstrapEnvironment(context: Context): Boolean = withContext(Dispatchers.IO) {
         runCatching {
@@ -32,15 +36,20 @@ class ExtractionEngine {
 
             rootfsDir.mkdirs()
 
-            val exitCode = ProcessBuilder(
+            val process = ProcessBuilder(
                 "tar",
                 "-xf",
                 tempFile.absolutePath,
                 "-C",
                 rootfsDir.absolutePath
-            ).start().waitFor()
+            ).redirectErrorStream(true).start()
+            val processOutput = process.inputStream.bufferedReader().use { it.readText() }
+            val exitCode = process.waitFor()
 
             tempFile.delete()
+            if (exitCode != 0) {
+                Log.e(TAG, "Bootstrap extraction failed (exit=$exitCode): $processOutput")
+            }
             exitCode == 0
         }.getOrDefault(false)
     }

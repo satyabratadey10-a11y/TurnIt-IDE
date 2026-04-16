@@ -66,8 +66,7 @@ private fun MainAppContent() {
             }
 
             LaunchedEffect(Unit) {
-                ExtractionEngine().bootstrapEnvironment(context)
-                isBootstrapped = true
+                isBootstrapped = ExtractionEngine().bootstrapEnvironment(context)
             }
         } else {
             MainShellScreen(
