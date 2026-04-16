@@ -175,7 +175,7 @@ fun MainShellScreen(
                 ""
             ),
             AiModel(
-                "Qwen 3.5",
+                "Qwen Plus",
                 "qwen-plus",
                 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
                 ""
@@ -494,15 +494,15 @@ fun MainShellScreen(
                         singleLine = true
                     )
                     OutlinedTextField(
-                        value = customModelUrl,
-                        onValueChange = { customModelUrl = it },
-                        label = { Text("API Provider URL") },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
                         value = customModelId,
                         onValueChange = { customModelId = it },
                         label = { Text("Model ID (API)") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelUrl,
+                        onValueChange = { customModelUrl = it },
+                        label = { Text("API Provider URL") },
                         singleLine = true
                     )
                     OutlinedTextField(

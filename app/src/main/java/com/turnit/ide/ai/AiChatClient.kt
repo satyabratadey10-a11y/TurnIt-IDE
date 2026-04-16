@@ -22,8 +22,12 @@ object AiChatClient {
         newPrompt: String
     ): String = withContext(Dispatchers.IO) {
         try {
-            val requestMessages = if (chatHistory.isEmpty() && newPrompt.isNotBlank()) {
-                listOf(ChatMessage(role = "user", content = newPrompt))
+            val trimmedPrompt = newPrompt.trim()
+            val requestMessages = if (
+                trimmedPrompt.isNotBlank() &&
+                    chatHistory.lastOrNull()?.let { it.role == "user" && it.content == trimmedPrompt } != true
+            ) {
+                chatHistory + ChatMessage(role = "user", content = trimmedPrompt)
             } else {
                 chatHistory
             }
