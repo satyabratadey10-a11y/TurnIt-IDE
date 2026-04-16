@@ -165,7 +165,14 @@ class AiChatClient(
                     "Tool run_terminal_command error: command rejected by safety policy."
                 } else {
                     val output = StringBuilder()
-                    shellEngine.execute(command).collect { output.append(it) }
+                    shellEngine.execute(command).collect { chunk ->
+                        if (output.length < MAX_COMMAND_OUTPUT_CHARS) {
+                            output.append(chunk)
+                        }
+                    }
+                    if (output.length >= MAX_COMMAND_OUTPUT_CHARS) {
+                        output.append("\n[Output truncated at $MAX_COMMAND_OUTPUT_CHARS characters]\n")
+                    }
                     output.toString()
                 }
             }
@@ -339,6 +346,7 @@ class AiChatClient(
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
         private const val MAX_COMMAND_LENGTH = 5000
+        private const val MAX_COMMAND_OUTPUT_CHARS = 100_000
         private val FORBIDDEN_COMMAND_SNIPPETS = listOf(
             "rm -rf /",
             ":(){",

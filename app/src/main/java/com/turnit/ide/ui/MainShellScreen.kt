@@ -172,11 +172,19 @@ fun MainShellScreen(
             chatInput = ""
             isAgentWorking = true
             scope.launch {
+                val apiKey = tokenManager.getAccessToken()
+                if (apiKey.isNullOrBlank()) {
+                    chatMessages.add(
+                        ChatMessage("Authentication failed: No API key available.", false)
+                    )
+                    isAgentWorking = false
+                    return@launch
+                }
                 try {
                     val response = aiChatClient.sendMessage(
                         chatHistory = chatHistory,
                         selectedModel = selectedModel,
-                        apiKey = tokenManager.getAccessToken(),
+                        apiKey = apiKey,
                         maxIterations = 5
                     )
                     chatMessages.add(ChatMessage(response, false))
