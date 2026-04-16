@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -308,6 +309,7 @@ fun MainShellScreen(
                 val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                 val useBottomSheetForChat = maxWidth < 900.dp
                 val dividerX = maxWidth * leftPaneWeight
+                val handleOffsetX = dividerX - 12.dp
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.fillMaxSize()) {
@@ -374,7 +376,7 @@ fun MainShellScreen(
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .padding(start = dividerX - 12.dp)
+                            .offset(x = handleOffsetX)
                             .size(width = 24.dp, height = 72.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(SPLITTER_HANDLE_COLOR)
