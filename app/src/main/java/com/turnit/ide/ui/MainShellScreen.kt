@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -78,8 +79,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.turnit.ide.engine.ShellEngine
+import com.turnit.ide.ai.AiChatClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
@@ -140,14 +143,53 @@ fun MainShellScreen(
 
     val modelOptions = listOf("Gemini 3 Flash", "Gemini 2.5 Fast", "Qwen 3.5")
     var selectedModel by remember { mutableStateOf(modelOptions.first()) }
+    val aiChatClient = remember { AiChatClient(shellEngine = shellEngine) }
+    var isAgentWorking by remember { mutableStateOf(false) }
+    var customApiKey by remember { mutableStateOf("") }
     val chatMessages = remember {
         mutableStateListOf(
             ChatMessage("Welcome to TurnIt AI assistant.", false)
         )
     }
+    val chatHistory = remember {
+        mutableStateListOf(
+            JSONObject()
+                .put("role", "assistant")
+                .put("content", "Welcome to TurnIt AI assistant.")
+        )
+    }
     var chatInput by remember { mutableStateOf("") }
-    val appendMockModelResponse = {
-        chatMessages.add(ChatMessage("Model [$selectedModel] is processing your request.", false))
+    val sendToAgent = {
+        if (isAgentWorking || chatInput.isBlank()) {
+            Unit
+        } else {
+            val userMessage = chatInput.trim()
+            chatMessages.add(ChatMessage(userMessage, true))
+            chatHistory.add(
+                JSONObject()
+                    .put("role", "user")
+                    .put("content", userMessage)
+            )
+            chatInput = ""
+            isAgentWorking = true
+            scope.launch {
+                try {
+                    val response = aiChatClient.sendMessage(
+                        chatHistory = chatHistory,
+                        selectedModel = selectedModel,
+                        apiKey = customApiKey,
+                        maxIterations = 5
+                    )
+                    chatMessages.add(ChatMessage(response, false))
+                } catch (e: Exception) {
+                    chatMessages.add(
+                        ChatMessage("Agent request failed: ${e.message ?: e.toString()}", false)
+                    )
+                } finally {
+                    isAgentWorking = false
+                }
+            }
+        }
     }
 
     ModalNavigationDrawer(
@@ -165,7 +207,14 @@ fun MainShellScreen(
                     onClick = {
                         chatMessages.clear()
                         chatMessages.add(ChatMessage("New chat started.", false))
+                        chatHistory.clear()
+                        chatHistory.add(
+                            JSONObject()
+                                .put("role", "assistant")
+                                .put("content", "New chat started.")
+                        )
                         chatInput = ""
+                        isAgentWorking = false
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -281,15 +330,10 @@ fun MainShellScreen(
                             modelOptions = modelOptions,
                             onModelSelected = { selectedModel = it },
                             messages = chatMessages,
+                            isAgentWorking = isAgentWorking,
                             input = chatInput,
                             onInputChange = { chatInput = it },
-                            onSend = {
-                                if (chatInput.isNotBlank()) {
-                                    chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                    appendMockModelResponse()
-                                    chatInput = ""
-                                }
-                            }
+                            onSend = sendToAgent
                         )
                     } else {
                         Box(
@@ -359,15 +403,10 @@ fun MainShellScreen(
                                     modelOptions = modelOptions,
                                     onModelSelected = { selectedModel = it },
                                     messages = chatMessages,
+                                    isAgentWorking = isAgentWorking,
                                     input = chatInput,
                                     onInputChange = { chatInput = it },
-                                    onSend = {
-                                        if (chatInput.isNotBlank()) {
-                                            chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                            appendMockModelResponse()
-                                            chatInput = ""
-                                        }
-                                    }
+                                    onSend = sendToAgent
                                 )
                             }
                         }
@@ -400,6 +439,7 @@ private fun ChatPane(
     modelOptions: List<String>,
     onModelSelected: (String) -> Unit,
     messages: List<ChatMessage>,
+    isAgentWorking: Boolean,
     input: String,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit
@@ -488,6 +528,27 @@ private fun ChatPane(
 
         Spacer(Modifier.height(10.dp))
 
+        if (isAgentWorking) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = IdeColors.AccentBlue
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Agent is working...",
+                    color = IdeColors.TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
         val borderSpin = rememberInfiniteTransition(label = "neon_border")
         val angle by borderSpin.animateFloat(
             initialValue = 0f,
@@ -551,11 +612,11 @@ private fun ChatPane(
                     }
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onSend) {
+                IconButton(onClick = onSend, enabled = !isAgentWorking && input.isNotBlank()) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = "Send",
-                        tint = IdeColors.AccentGreen
+                        tint = if (isAgentWorking || input.isBlank()) IdeColors.TextMuted else IdeColors.AccentGreen
                     )
                 }
             }
