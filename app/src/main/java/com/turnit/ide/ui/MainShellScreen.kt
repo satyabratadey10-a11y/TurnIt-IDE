@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +48,9 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberBottomSheetScaffoldState
@@ -84,6 +88,7 @@ import kotlinx.coroutines.launch
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private data class ChatMessage(val text: String, val fromUser: Boolean)
+data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
@@ -138,8 +143,26 @@ fun MainShellScreen(
         }
     }
 
-    val modelOptions = listOf("Gemini 3 Flash", "Gemini 2.5 Fast", "Qwen 3.5")
+    val addCustomModelOption = remember {
+        AiModel(
+            name = "+ Add Custom Model",
+            apiUrl = "",
+            apiKey = ""
+        )
+    }
+    val modelOptions = remember {
+        mutableStateListOf(
+            AiModel("Gemini 3 Flash", "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent", ""),
+            AiModel("Gemini 2.5 Fast", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", ""),
+            AiModel("Qwen 3.5", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", ""),
+            addCustomModelOption
+        )
+    }
     var selectedModel by remember { mutableStateOf(modelOptions.first()) }
+    var showCustomModelDialog by remember { mutableStateOf(false) }
+    var customModelName by remember { mutableStateOf("") }
+    var customModelUrl by remember { mutableStateOf("") }
+    var customModelApiKey by remember { mutableStateOf("") }
     val chatMessages = remember {
         mutableStateListOf(
             ChatMessage("Welcome to TurnIt AI assistant.", false)
@@ -147,7 +170,7 @@ fun MainShellScreen(
     }
     var chatInput by remember { mutableStateOf("") }
     val appendMockModelResponse = {
-        chatMessages.add(ChatMessage("Model [$selectedModel] is processing your request.", false))
+        chatMessages.add(ChatMessage("Model [${selectedModel.name}] is processing your request.", false))
     }
 
     ModalNavigationDrawer(
@@ -279,7 +302,13 @@ fun MainShellScreen(
                         ChatPane(
                             selectedModel = selectedModel,
                             modelOptions = modelOptions,
-                            onModelSelected = { selectedModel = it },
+                            onModelSelected = { model ->
+                                if (model == addCustomModelOption) {
+                                    showCustomModelDialog = true
+                                } else {
+                                    selectedModel = model
+                                }
+                            },
                             messages = chatMessages,
                             input = chatInput,
                             onInputChange = { chatInput = it },
@@ -357,7 +386,13 @@ fun MainShellScreen(
                                 ChatPane(
                                     selectedModel = selectedModel,
                                     modelOptions = modelOptions,
-                                    onModelSelected = { selectedModel = it },
+                                    onModelSelected = { model ->
+                                        if (model == addCustomModelOption) {
+                                            showCustomModelDialog = true
+                                        } else {
+                                            selectedModel = model
+                                        }
+                                    },
                                     messages = chatMessages,
                                     input = chatInput,
                                     onInputChange = { chatInput = it },
@@ -392,13 +427,73 @@ fun MainShellScreen(
             }
         }
     }
+
+    if (showCustomModelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomModelDialog = false },
+            title = { Text("Add Custom Model") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customModelName,
+                        onValueChange = { customModelName = it },
+                        label = { Text("Model Name") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelUrl,
+                        onValueChange = { customModelUrl = it },
+                        label = { Text("API Provider URL") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelApiKey,
+                        onValueChange = { customModelApiKey = it },
+                        label = { Text("API Key (Optional)") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newModel = AiModel(
+                            name = customModelName.trim(),
+                            apiUrl = customModelUrl.trim(),
+                            apiKey = customModelApiKey.trim(),
+                            isCustom = true
+                        )
+                        val addOptionIndex = modelOptions.indexOf(addCustomModelOption)
+                        if (addOptionIndex >= 0) {
+                            modelOptions.add(addOptionIndex, newModel)
+                        } else {
+                            modelOptions.add(newModel)
+                        }
+                        selectedModel = newModel
+                        showCustomModelDialog = false
+                        customModelName = ""
+                        customModelUrl = ""
+                        customModelApiKey = ""
+                    },
+                    enabled = customModelName.isNotBlank() && customModelUrl.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomModelDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun ChatPane(
-    selectedModel: String,
-    modelOptions: List<String>,
-    onModelSelected: (String) -> Unit,
+    selectedModel: AiModel,
+    modelOptions: List<AiModel>,
+    onModelSelected: (AiModel) -> Unit,
     messages: List<ChatMessage>,
     input: String,
     onInputChange: (String) -> Unit,
@@ -427,7 +522,7 @@ private fun ChatPane(
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Text(
-                text = selectedModel,
+                text = selectedModel.name,
                 color = IdeColors.TextPrimary,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp
@@ -438,7 +533,7 @@ private fun ChatPane(
             ) {
                 modelOptions.forEach { model ->
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(model) },
+                        text = { Text(model.name) },
                         onClick = {
                             onModelSelected(model)
                             modelMenuOpen = false
