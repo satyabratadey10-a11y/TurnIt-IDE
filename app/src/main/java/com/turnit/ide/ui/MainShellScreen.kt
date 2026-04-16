@@ -173,7 +173,7 @@ fun MainShellScreen(
     val isCustomModelUrlValid = remember(customModelUrl) {
         val trimmedUrl = customModelUrl.trim()
         val parsedUrl = Uri.parse(trimmedUrl)
-        (parsedUrl.scheme == "https" || parsedUrl.scheme == "http") && !parsedUrl.host.isNullOrBlank()
+        parsedUrl.scheme == "https" && !parsedUrl.host.isNullOrBlank()
     }
     val isCustomModelInputValid = customModelName.isNotBlank() && isCustomModelUrlValid
     val chatMessages = remember {
@@ -482,12 +482,9 @@ fun MainShellScreen(
                             apiKey = customModelApiKey.trim(),
                             isCustom = true
                         )
-                        val addOptionIndex = modelOptions.indexOf(addCustomModelOption).takeIf { it >= 0 }
-                            ?: run {
-                                modelOptions.add(addCustomModelOption)
-                                modelOptions.lastIndex
-                            }
-                        modelOptions.add(addOptionIndex, newModel)
+                        modelOptions.removeAll { it == addCustomModelOption }
+                        modelOptions.add(addCustomModelOption)
+                        modelOptions.add(modelOptions.lastIndex, newModel)
                         selectedModel = newModel
                         showCustomModelDialog = false
                         clearCustomModelInputs()
