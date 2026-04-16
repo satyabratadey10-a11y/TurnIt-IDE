@@ -143,9 +143,8 @@ fun MainShellScreen(
 
     val modelOptions = listOf("Gemini 3 Flash", "Gemini 2.5 Fast", "Qwen 3.5")
     var selectedModel by remember { mutableStateOf(modelOptions.first()) }
-    val aiChatClient = remember { AiChatClient(shellEngine = shellEngine) }
+    val aiChatClient = remember { AiChatClient(context = context, shellEngine = shellEngine) }
     var isAgentWorking by remember { mutableStateOf(false) }
-    var customApiKey by remember { mutableStateOf("") }
     val chatMessages = remember {
         mutableStateListOf(
             ChatMessage("Welcome to TurnIt AI assistant.", false)
@@ -177,7 +176,7 @@ fun MainShellScreen(
                     val response = aiChatClient.sendMessage(
                         chatHistory = chatHistory,
                         selectedModel = selectedModel,
-                        apiKey = customApiKey,
+                        apiKey = null,
                         maxIterations = 5
                     )
                     chatMessages.add(ChatMessage(response, false))

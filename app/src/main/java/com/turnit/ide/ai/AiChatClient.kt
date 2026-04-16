@@ -1,5 +1,6 @@
 package com.turnit.ide.ai
 
+import android.content.Context
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
@@ -13,23 +14,23 @@ import org.json.JSONObject
 import java.io.File
 
 class AiChatClient(
+    context: Context,
     private val shellEngine: ShellEngine,
     private val endpoint: String = DEFAULT_ENDPOINT,
     private val httpClient: OkHttpClient = OkHttpClient()
 ) {
+    private val allowedRoot: File = context.filesDir.canonicalFile
+
     suspend fun sendMessage(
         chatHistory: MutableList<JSONObject>,
         selectedModel: String,
         apiKey: String?,
         maxIterations: Int = 5
     ): String = withContext(Dispatchers.IO) {
-        if (apiKey.isNullOrBlank()) {
-            return@withContext "API key is missing. Open API Key Settings and add a key."
-        }
         return@withContext sendMessageRecursive(
             chatHistory = chatHistory,
             selectedModel = selectedModel,
-            apiKey = apiKey,
+            apiKey = apiKey?.takeIf { it.isNotBlank() },
             maxIterations = maxIterations,
             iteration = 0
         )
@@ -38,7 +39,7 @@ class AiChatClient(
     private suspend fun sendMessageRecursive(
         chatHistory: MutableList<JSONObject>,
         selectedModel: String,
-        apiKey: String,
+        apiKey: String?,
         maxIterations: Int,
         iteration: Int
     ): String {
@@ -52,12 +53,14 @@ class AiChatClient(
             .put("tools", buildToolsArray())
             .put("tool_choice", "auto")
 
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(endpoint)
-            .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Content-Type", "application/json")
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        if (!apiKey.isNullOrBlank()) {
+            requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+        }
+        val request = requestBuilder.build()
 
         return try {
             httpClient.newCall(request).execute().use { response ->
@@ -132,7 +135,8 @@ class AiChatClient(
                 if (filePath.isBlank()) {
                     "Tool read_file error: filepath is required."
                 } else {
-                    File(filePath).readText()
+                    val targetFile = resolveAndValidatePath(filePath)
+                    targetFile.readText()
                 }
             }
 
@@ -142,7 +146,7 @@ class AiChatClient(
                 if (filePath.isBlank()) {
                     "Tool write_file error: filepath is required."
                 } else {
-                    val file = File(filePath)
+                    val file = resolveAndValidatePath(filePath)
                     file.parentFile?.mkdirs()
                     file.writeText(content)
                     "Wrote ${content.length} characters to $filePath"
@@ -153,6 +157,8 @@ class AiChatClient(
                 val command = arguments.optString("command")
                 if (command.isBlank()) {
                     "Tool run_terminal_command error: command is required."
+                } else if (!isSafeCommand(command)) {
+                    "Tool run_terminal_command error: command rejected by safety policy."
                 } else {
                     shellEngine.execute(command).toList().joinToString(separator = "")
                 }
@@ -160,6 +166,22 @@ class AiChatClient(
 
             else -> "Unknown tool requested: $functionName"
         }
+    }
+
+    private fun resolveAndValidatePath(path: String): File {
+        val target = File(path).canonicalFile
+        val allowedPath = allowedRoot.path
+        val targetPath = target.path
+        if (targetPath != allowedPath && !targetPath.startsWith("$allowedPath${File.separator}")) {
+            throw IllegalArgumentException("Path is outside allowed workspace: $path")
+        }
+        return target
+    }
+
+    private fun isSafeCommand(command: String): Boolean {
+        val normalized = command.lowercase()
+        if (normalized.length > 5000) return false
+        return FORBIDDEN_COMMAND_SNIPPETS.none { snippet -> normalized.contains(snippet) }
     }
 
     private fun parseArguments(rawArguments: String): JSONObject {
@@ -287,9 +309,9 @@ class AiChatClient(
 
     private fun resolveModel(selectedModel: String): String {
         return when (selectedModel) {
-            "Gemini 3 Flash" -> "google/gemini-2.5-flash"
-            "Gemini 2.5 Fast" -> "google/gemini-2.5-flash-lite-preview-06-17"
-            "Qwen 3.5" -> "qwen/qwen3-235b-a22b"
+            "Gemini 3 Flash" -> "google/gemini-3-flash"
+            "Gemini 2.5 Fast" -> "google/gemini-2.5-fast"
+            "Qwen 3.5" -> "qwen/qwen-3.5"
             else -> selectedModel
         }
     }
@@ -297,5 +319,14 @@ class AiChatClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+        private val FORBIDDEN_COMMAND_SNIPPETS = listOf(
+            "rm -rf /",
+            ":(){",
+            "shutdown",
+            "reboot",
+            "poweroff",
+            "mkfs",
+            "dd if="
+        )
     }
 }
