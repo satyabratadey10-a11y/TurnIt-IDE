@@ -163,6 +163,16 @@ fun MainShellScreen(
     var customModelName by remember { mutableStateOf("") }
     var customModelUrl by remember { mutableStateOf("") }
     var customModelApiKey by remember { mutableStateOf("") }
+    val clearCustomModelInputs = {
+        customModelName = ""
+        customModelUrl = ""
+        customModelApiKey = ""
+    }
+    val isCustomModelUrlValid = remember(customModelUrl) {
+        val trimmedUrl = customModelUrl.trim()
+        trimmedUrl.startsWith("https://") || trimmedUrl.startsWith("http://")
+    }
+    val isCustomModelInputValid = customModelName.isNotBlank() && isCustomModelUrlValid
     val chatMessages = remember {
         mutableStateListOf(
             ChatMessage("Welcome to TurnIt AI assistant.", false)
@@ -304,6 +314,7 @@ fun MainShellScreen(
                             modelOptions = modelOptions,
                             onModelSelected = { model ->
                                 if (model == addCustomModelOption) {
+                                    clearCustomModelInputs()
                                     showCustomModelDialog = true
                                 } else {
                                     selectedModel = model
@@ -388,6 +399,7 @@ fun MainShellScreen(
                                     modelOptions = modelOptions,
                                     onModelSelected = { model ->
                                         if (model == addCustomModelOption) {
+                                            clearCustomModelInputs()
                                             showCustomModelDialog = true
                                         } else {
                                             selectedModel = model
@@ -430,7 +442,10 @@ fun MainShellScreen(
 
     if (showCustomModelDialog) {
         AlertDialog(
-            onDismissRequest = { showCustomModelDialog = false },
+            onDismissRequest = {
+                showCustomModelDialog = false
+                clearCustomModelInputs()
+            },
             title = { Text("Add Custom Model") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -457,6 +472,7 @@ fun MainShellScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (!isCustomModelInputValid) return@Button
                         val newModel = AiModel(
                             name = customModelName.trim(),
                             apiUrl = customModelUrl.trim(),
@@ -471,17 +487,20 @@ fun MainShellScreen(
                         }
                         selectedModel = newModel
                         showCustomModelDialog = false
-                        customModelName = ""
-                        customModelUrl = ""
-                        customModelApiKey = ""
+                        clearCustomModelInputs()
                     },
-                    enabled = customModelName.isNotBlank() && customModelUrl.isNotBlank()
+                    enabled = isCustomModelInputValid
                 ) {
                     Text("Save")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCustomModelDialog = false }) {
+                TextButton(
+                    onClick = {
+                        showCustomModelDialog = false
+                        clearCustomModelInputs()
+                    }
+                ) {
                     Text("Cancel")
                 }
             }
