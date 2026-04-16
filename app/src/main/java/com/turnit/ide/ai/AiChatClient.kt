@@ -178,10 +178,11 @@ class AiChatClient(
         if (path.contains("..")) {
             throw IllegalArgumentException("Path traversal is not allowed: $path")
         }
-        val target = File(path).canonicalFile
-        if (!target.isAbsolute) {
+        val originalFile = File(path)
+        if (!originalFile.isAbsolute) {
             throw IllegalArgumentException("Absolute path required: $path")
         }
+        val target = File(path).canonicalFile
         if (Files.isSymbolicLink(target.toPath())) {
             throw IllegalArgumentException("Symbolic links are not allowed: $path")
         }
@@ -347,7 +348,20 @@ class AiChatClient(
             "mkfs",
             "dd if="
         )
-        private val FORBIDDEN_SHELL_CHARS = listOf(";", "&&", "||", "|", ">", "<", "`", "$(")
+        private val FORBIDDEN_SHELL_CHARS = listOf(
+            ";",
+            "&&",
+            "||",
+            "|",
+            ">",
+            "<",
+            "`",
+            "$(",
+            "\n",
+            "\r",
+            "${",
+            "#"
+        )
         private val SAFE_COMMAND_PREFIXES = setOf(
             "pwd",
             "ls",
@@ -367,20 +381,7 @@ class AiChatClient(
             "df",
             "whoami",
             "uname",
-            "env",
-            "git",
-            "python",
-            "python3",
-            "node",
-            "npm",
-            "pip",
-            "gcc",
-            "g++",
-            "clang",
-            "javac",
-            "java",
-            "cmake",
-            "make"
+            "env"
         )
     }
 }

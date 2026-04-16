@@ -78,6 +78,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.auth.TokenManager
 import com.turnit.ide.engine.ShellEngine
 import com.turnit.ide.ai.AiChatClient
 import kotlinx.coroutines.Job
@@ -106,6 +107,7 @@ fun MainShellScreen(
     var leftPaneWeight by remember { mutableFloatStateOf(0.5f) }
 
     val shellEngine = remember { ShellEngine(context) }
+    val tokenManager = remember { TokenManager(context) }
     val consoleLogs = remember {
         mutableStateListOf(
             "TurnIt IDE Shell Engine (v1.0)\n",
@@ -159,9 +161,7 @@ fun MainShellScreen(
     }
     var chatInput by remember { mutableStateOf("") }
     val sendToAgent = {
-        if (isAgentWorking || chatInput.isBlank()) {
-            Unit
-        } else {
+        if (!isAgentWorking && chatInput.isNotBlank()) {
             val userMessage = chatInput.trim()
             chatMessages.add(ChatMessage(userMessage, true))
             chatHistory.add(
@@ -176,7 +176,7 @@ fun MainShellScreen(
                     val response = aiChatClient.sendMessage(
                         chatHistory = chatHistory,
                         selectedModel = selectedModel,
-                        apiKey = null,
+                        apiKey = tokenManager.getAccessToken(),
                         maxIterations = 5
                     )
                     chatMessages.add(ChatMessage(response, false))
