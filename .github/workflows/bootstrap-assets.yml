@@ -1,0 +1,28 @@
+name: Bootstrap Terminal Assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download bootstrap assets
+        run: |
+          mkdir -p app/src/main/assets
+          wget -q -O app/src/main/assets/ubuntu.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.3-base-arm64.tar.gz
+          wget -qL -O app/src/main/assets/proot https://sourceforge.net/projects/proot.mirror/files/v5.3.0/proot-v5.3.0-aarch64-static/download
+          chmod +x app/src/main/assets/proot
+
+      - name: Commit and push assets
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/assets/
+          git commit -m "chore: Bundle Ubuntu RootFS and static PRoot via CI/CD"
+          git push
