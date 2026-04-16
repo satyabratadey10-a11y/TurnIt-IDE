@@ -22,18 +22,15 @@ object AiChatClient {
         newPrompt: String
     ): String = withContext(Dispatchers.IO) {
         try {
-            val normalizedHistory = if (
-                chatHistory.lastOrNull()?.role == "user" &&
-                    chatHistory.lastOrNull()?.content == newPrompt
-            ) {
-                chatHistory
+            val requestMessages = if (chatHistory.isEmpty() && newPrompt.isNotBlank()) {
+                listOf(ChatMessage(role = "user", content = newPrompt))
             } else {
-                chatHistory + ChatMessage(role = "user", content = newPrompt)
+                chatHistory
             }
 
             val payload = mapOf(
                 "model" to model.modelId,
-                "messages" to normalizedHistory.map {
+                "messages" to requestMessages.map {
                     mapOf(
                         "role" to it.role,
                         "content" to it.content
@@ -45,7 +42,6 @@ object AiChatClient {
             val requestBuilder = Request.Builder()
                 .url(model.apiUrl)
                 .post(requestBody)
-                .addHeader("Content-Type", "application/json")
             if (model.apiKey.isNotBlank()) {
                 requestBuilder.addHeader("Authorization", "Bearer ${model.apiKey}")
             }

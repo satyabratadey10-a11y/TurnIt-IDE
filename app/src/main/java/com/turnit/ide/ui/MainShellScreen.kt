@@ -186,10 +186,12 @@ fun MainShellScreen(
     var selectedModel by remember { mutableStateOf(modelOptions.first()) }
     var showCustomModelDialog by remember { mutableStateOf(false) }
     var customModelName by remember { mutableStateOf("") }
+    var customModelId by remember { mutableStateOf("") }
     var customModelUrl by remember { mutableStateOf("") }
     var customModelApiKey by remember { mutableStateOf("") }
     val clearCustomModelInputs = {
         customModelName = ""
+        customModelId = ""
         customModelUrl = ""
         customModelApiKey = ""
     }
@@ -198,7 +200,10 @@ fun MainShellScreen(
         val parsedUrl = Uri.parse(trimmedUrl)
         parsedUrl.scheme == "https" && !parsedUrl.host.isNullOrBlank()
     }
-    val isCustomModelInputValid = customModelName.isNotBlank() && isCustomModelUrlValid
+    val isCustomModelInputValid =
+        customModelName.isNotBlank() &&
+            customModelId.isNotBlank() &&
+            isCustomModelUrlValid
     val chatMessages = remember {
         mutableStateListOf(
             ChatMessage(role = "assistant", content = "Welcome to TurnIt AI assistant.")
@@ -495,6 +500,12 @@ fun MainShellScreen(
                         singleLine = true
                     )
                     OutlinedTextField(
+                        value = customModelId,
+                        onValueChange = { customModelId = it },
+                        label = { Text("Model ID (API)") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
                         value = customModelApiKey,
                         onValueChange = { customModelApiKey = it },
                         label = { Text("API Key (Optional)") },
@@ -508,7 +519,7 @@ fun MainShellScreen(
                     onClick = {
                         val newModel = AiModel(
                             name = customModelName.trim(),
-                            modelId = customModelName.trim(),
+                            modelId = customModelId.trim(),
                             apiUrl = customModelUrl.trim(),
                             apiKey = customModelApiKey.trim(),
                             isCustom = true
