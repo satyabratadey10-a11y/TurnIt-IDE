@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -82,6 +83,8 @@ import kotlinx.coroutines.launch
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private data class ChatMessage(val text: String, val fromUser: Boolean)
+private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
+private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,6 +145,9 @@ fun MainShellScreen(
         )
     }
     var chatInput by remember { mutableStateOf("") }
+    val appendMockModelResponse = {
+        chatMessages.add(ChatMessage("Model [$selectedModel] is processing your request.", false))
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -158,6 +164,7 @@ fun MainShellScreen(
                     onClick = {
                         chatMessages.clear()
                         chatMessages.add(ChatMessage("New chat started.", false))
+                        chatInput = ""
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -172,7 +179,6 @@ fun MainShellScreen(
                     label = { Text("History") },
                     selected = false,
                     onClick = {
-                        chatMessages.add(ChatMessage("History opened.", false))
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -187,7 +193,6 @@ fun MainShellScreen(
                     label = { Text("API Key Settings") },
                     selected = false,
                     onClick = {
-                        chatMessages.add(ChatMessage("Open API Key Settings.", false))
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -280,7 +285,7 @@ fun MainShellScreen(
                             onSend = {
                                 if (chatInput.isNotBlank()) {
                                     chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                    chatMessages.add(ChatMessage("Model [$selectedModel] is processing your request.", false))
+                                    appendMockModelResponse()
                                     chatInput = ""
                                 }
                             }
@@ -300,7 +305,7 @@ fun MainShellScreen(
                     .fillMaxSize()
                     .padding(pad)
             ) {
-                val totalWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                 val useBottomSheetForChat = maxWidth < 900.dp
                 val dividerX = maxWidth * leftPaneWeight
 
@@ -357,7 +362,7 @@ fun MainShellScreen(
                                     onSend = {
                                         if (chatInput.isNotBlank()) {
                                             chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                            chatMessages.add(ChatMessage("Model [$selectedModel] is processing your request.", false))
+                                            appendMockModelResponse()
                                             chatInput = ""
                                         }
                                     }
@@ -372,10 +377,10 @@ fun MainShellScreen(
                             .padding(start = dividerX - 12.dp)
                             .size(width = 24.dp, height = 72.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x88999999))
+                            .background(SPLITTER_HANDLE_COLOR)
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
-                                    val deltaWeight = dragAmount / totalWidthPx
+                                    val deltaWeight = dragAmount / totalWidthInPx
                                     leftPaneWeight =
                                         (leftPaneWeight + deltaWeight).coerceIn(0.2f, 0.8f)
                                 }
@@ -535,7 +540,7 @@ private fun ChatPane(
                     decorationBox = { inner ->
                         if (input.isEmpty()) {
                             Text(
-                                "Type your message...",
+                                CHAT_PLACEHOLDER_TEXT,
                                 color = IdeColors.TextMuted,
                                 fontSize = 13.sp
                             )
