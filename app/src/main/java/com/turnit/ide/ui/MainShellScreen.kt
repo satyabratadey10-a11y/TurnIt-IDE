@@ -79,6 +79,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.turnit.ide.engine.ShellEngine
@@ -465,6 +466,7 @@ fun MainShellScreen(
                         value = customModelApiKey,
                         onValueChange = { customModelApiKey = it },
                         label = { Text("API Key (Optional)") },
+                        visualTransformation = PasswordVisualTransformation(),
                         singleLine = true
                     )
                 }
