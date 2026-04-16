@@ -1,5 +1,6 @@
 package com.turnit.ide.ui
 
+import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -89,7 +90,7 @@ import kotlinx.coroutines.launch
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private data class ChatMessage(val text: String, val fromUser: Boolean)
-data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
+private data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
@@ -171,7 +172,8 @@ fun MainShellScreen(
     }
     val isCustomModelUrlValid = remember(customModelUrl) {
         val trimmedUrl = customModelUrl.trim()
-        trimmedUrl.startsWith("https://") || trimmedUrl.startsWith("http://")
+        val parsedUrl = Uri.parse(trimmedUrl)
+        (parsedUrl.scheme == "https" || parsedUrl.scheme == "http") && !parsedUrl.host.isNullOrBlank()
     }
     val isCustomModelInputValid = customModelName.isNotBlank() && isCustomModelUrlValid
     val chatMessages = remember {
@@ -474,19 +476,18 @@ fun MainShellScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (!isCustomModelInputValid) return@Button
                         val newModel = AiModel(
                             name = customModelName.trim(),
                             apiUrl = customModelUrl.trim(),
                             apiKey = customModelApiKey.trim(),
                             isCustom = true
                         )
-                        val addOptionIndex = modelOptions.indexOf(addCustomModelOption)
-                        if (addOptionIndex >= 0) {
-                            modelOptions.add(addOptionIndex, newModel)
-                        } else {
-                            modelOptions.add(newModel)
-                        }
+                        val addOptionIndex = modelOptions.indexOf(addCustomModelOption).takeIf { it >= 0 }
+                            ?: run {
+                                modelOptions.add(addCustomModelOption)
+                                modelOptions.lastIndex
+                            }
+                        modelOptions.add(addOptionIndex, newModel)
                         selectedModel = newModel
                         showCustomModelDialog = false
                         clearCustomModelInputs()
