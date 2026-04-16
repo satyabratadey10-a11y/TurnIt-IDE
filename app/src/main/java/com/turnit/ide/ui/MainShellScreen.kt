@@ -83,14 +83,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
-private data class ChatMessage(val text: String, val fromUser: Boolean)
-private data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
+data class ChatMessage(val role: String, val content: String)
+data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
@@ -178,12 +179,31 @@ fun MainShellScreen(
     val isCustomModelInputValid = customModelName.isNotBlank() && isCustomModelUrlValid
     val chatMessages = remember {
         mutableStateListOf(
-            ChatMessage("Welcome to TurnIt AI assistant.", false)
+            ChatMessage(role = "assistant", content = "Welcome to TurnIt AI assistant.")
         )
     }
     var chatInput by remember { mutableStateOf("") }
-    val appendMockModelResponse = {
-        chatMessages.add(ChatMessage("Model [${selectedModel.name}] is processing your request.", false))
+    val sendChatPrompt = send@{
+        val prompt = chatInput.trim()
+        if (prompt.isBlank()) {
+            return@send
+        }
+
+        chatMessages.add(ChatMessage(role = "user", content = prompt))
+        chatInput = ""
+
+        val loadingBubble = ChatMessage(role = "assistant", content = "...")
+        chatMessages.add(loadingBubble)
+
+        scope.launch {
+            val response = AiChatClient.sendMessage(
+                model = selectedModel,
+                chatHistory = chatMessages.toList().dropLast(1),
+                newPrompt = prompt
+            )
+            chatMessages.remove(loadingBubble)
+            chatMessages.add(ChatMessage(role = "assistant", content = response))
+        }
     }
 
     ModalNavigationDrawer(
@@ -200,7 +220,7 @@ fun MainShellScreen(
                     selected = false,
                     onClick = {
                         chatMessages.clear()
-                        chatMessages.add(ChatMessage("New chat started.", false))
+                        chatMessages.add(ChatMessage(role = "assistant", content = "New chat started."))
                         chatInput = ""
                         scope.launch { drawerState.close() }
                     },
@@ -326,13 +346,7 @@ fun MainShellScreen(
                             messages = chatMessages,
                             input = chatInput,
                             onInputChange = { chatInput = it },
-                            onSend = {
-                                if (chatInput.isNotBlank()) {
-                                    chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                    appendMockModelResponse()
-                                    chatInput = ""
-                                }
-                            }
+                            onSend = sendChatPrompt
                         )
                     } else {
                         Box(
@@ -411,13 +425,7 @@ fun MainShellScreen(
                                     messages = chatMessages,
                                     input = chatInput,
                                     onInputChange = { chatInput = it },
-                                    onSend = {
-                                        if (chatInput.isNotBlank()) {
-                                            chatMessages.add(ChatMessage(chatInput.trim(), true))
-                                            appendMockModelResponse()
-                                            chatInput = ""
-                                        }
-                                    }
+                                    onSend = sendChatPrompt
                                 )
                             }
                         }
@@ -574,13 +582,13 @@ private fun ChatPane(
             items(messages) { message ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start
                 ) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (message.fromUser) Color(0x33FFFFFF)
+                                if (message.role == "user") Color(0x33FFFFFF)
                                 else Color(0x22161B22)
                             )
                             .border(
@@ -591,7 +599,7 @@ private fun ChatPane(
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = message.text,
+                            text = message.content,
                             color = IdeColors.TextPrimary,
                             fontSize = 12.sp
                         )
