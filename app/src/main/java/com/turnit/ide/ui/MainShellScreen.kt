@@ -91,7 +91,13 @@ import kotlinx.coroutines.launch
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 data class ChatMessage(val role: String, val content: String)
-data class AiModel(val name: String, val apiUrl: String, val apiKey: String, val isCustom: Boolean = false)
+data class AiModel(
+    val name: String,
+    val modelId: String,
+    val apiUrl: String,
+    val apiKey: String,
+    val isCustom: Boolean = false
+)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
@@ -149,15 +155,31 @@ fun MainShellScreen(
     val addCustomModelOption = remember {
         AiModel(
             name = "+ Add Custom Model",
+            modelId = "",
             apiUrl = "",
             apiKey = ""
         )
     }
     val modelOptions = remember {
         mutableStateListOf(
-            AiModel("Gemini 3 Flash", "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent", ""),
-            AiModel("Gemini 2.5 Fast", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", ""),
-            AiModel("Qwen 3.5", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", ""),
+            AiModel(
+                "Gemini 3 Flash",
+                "gemini-3-flash",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent",
+                ""
+            ),
+            AiModel(
+                "Gemini 2.5 Fast",
+                "gemini-2.5-flash",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                ""
+            ),
+            AiModel(
+                "Qwen 3.5",
+                "qwen-plus",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                ""
+            ),
             addCustomModelOption
         )
     }
@@ -486,13 +508,12 @@ fun MainShellScreen(
                     onClick = {
                         val newModel = AiModel(
                             name = customModelName.trim(),
+                            modelId = customModelName.trim(),
                             apiUrl = customModelUrl.trim(),
                             apiKey = customModelApiKey.trim(),
                             isCustom = true
                         )
-                        modelOptions.removeAll { it == addCustomModelOption }
-                        modelOptions.add(addCustomModelOption)
-                        modelOptions.add(modelOptions.lastIndex, newModel)
+                        modelOptions.add(modelOptions.size - 1, newModel)
                         selectedModel = newModel
                         showCustomModelDialog = false
                         clearCustomModelInputs()

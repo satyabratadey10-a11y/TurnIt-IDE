@@ -32,7 +32,7 @@ object AiChatClient {
             }
 
             val payload = mapOf(
-                "model" to model.name,
+                "model" to model.modelId,
                 "messages" to normalizedHistory.map {
                     mapOf(
                         "role" to it.role,
@@ -42,12 +42,15 @@ object AiChatClient {
             )
 
             val requestBody = gson.toJson(payload).toRequestBody(jsonMediaType)
-            val request = Request.Builder()
+            val requestBuilder = Request.Builder()
                 .url(model.apiUrl)
                 .post(requestBody)
-                .addHeader("Authorization", "Bearer ${model.apiKey}")
                 .addHeader("Content-Type", "application/json")
-                .build()
+            if (model.apiKey.isNotBlank()) {
+                requestBuilder.addHeader("Authorization", "Bearer ${model.apiKey}")
+            }
+
+            val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
                 val bodyText = response.body?.string().orEmpty()
