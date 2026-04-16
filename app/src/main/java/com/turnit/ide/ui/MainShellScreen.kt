@@ -175,7 +175,7 @@ fun MainShellScreen(
                 ""
             ),
             AiModel(
-                "Qwen Plus",
+                "qwen-plus",
                 "qwen-plus",
                 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
                 ""
@@ -223,13 +223,16 @@ fun MainShellScreen(
         chatMessages.add(loadingBubble)
 
         scope.launch {
-            val response = AiChatClient.sendMessage(
-                model = selectedModel,
-                chatHistory = chatMessages.toList().dropLast(1),
-                newPrompt = prompt
-            )
-            chatMessages.remove(loadingBubble)
-            chatMessages.add(ChatMessage(role = "assistant", content = response))
+            try {
+                val response = AiChatClient.sendMessage(
+                    model = selectedModel,
+                    chatHistory = chatMessages.toList().dropLast(1),
+                    newPrompt = prompt
+                )
+                chatMessages.add(ChatMessage(role = "assistant", content = response))
+            } finally {
+                chatMessages.remove(loadingBubble)
+            }
         }
     }
 

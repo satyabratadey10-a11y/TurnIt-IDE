@@ -10,31 +10,27 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 object AiChatClient {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun sendMessage(
         model: AiModel,
         chatHistory: List<ChatMessage>,
         newPrompt: String
     ): String = withContext(Dispatchers.IO) {
         try {
-            val trimmedPrompt = newPrompt.trim()
-            val requestMessages = if (
-                trimmedPrompt.isNotBlank() &&
-                    chatHistory.lastOrNull()?.let { it.role == "user" && it.content == trimmedPrompt } != true
-            ) {
-                chatHistory + ChatMessage(role = "user", content = trimmedPrompt)
-            } else {
-                chatHistory
-            }
-
             val payload = mapOf(
                 "model" to model.modelId,
-                "messages" to requestMessages.map {
+                "messages" to chatHistory.map {
                     mapOf(
                         "role" to it.role,
                         "content" to it.content
