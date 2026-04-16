@@ -3,7 +3,7 @@ package com.turnit.ide.ai
 import android.content.Context
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -12,6 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
 
 class AiChatClient(
     context: Context,
@@ -147,7 +148,10 @@ class AiChatClient(
                     "Tool write_file error: filepath is required."
                 } else {
                     val file = resolveAndValidatePath(filePath)
-                    file.parentFile?.mkdirs()
+                    val parent = file.parentFile
+                    if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                        return "Tool write_file error: failed to create parent directory for $filePath"
+                    }
                     file.writeText(content)
                     "Wrote ${content.length} characters to $filePath"
                 }
@@ -160,7 +164,9 @@ class AiChatClient(
                 } else if (!isSafeCommand(command)) {
                     "Tool run_terminal_command error: command rejected by safety policy."
                 } else {
-                    shellEngine.execute(command).toList().joinToString(separator = "")
+                    val output = StringBuilder()
+                    shellEngine.execute(command).collect { output.append(it) }
+                    output.toString()
                 }
             }
 
@@ -169,7 +175,16 @@ class AiChatClient(
     }
 
     private fun resolveAndValidatePath(path: String): File {
+        if (path.contains("..")) {
+            throw IllegalArgumentException("Path traversal is not allowed: $path")
+        }
         val target = File(path).canonicalFile
+        if (!target.isAbsolute) {
+            throw IllegalArgumentException("Absolute path required: $path")
+        }
+        if (Files.isSymbolicLink(target.toPath())) {
+            throw IllegalArgumentException("Symbolic links are not allowed: $path")
+        }
         val allowedPath = allowedRoot.path
         val targetPath = target.path
         if (targetPath != allowedPath && !targetPath.startsWith("$allowedPath${File.separator}")) {
@@ -179,9 +194,12 @@ class AiChatClient(
     }
 
     private fun isSafeCommand(command: String): Boolean {
-        val normalized = command.lowercase()
-        if (normalized.length > 5000) return false
-        return FORBIDDEN_COMMAND_SNIPPETS.none { snippet -> normalized.contains(snippet) }
+        val normalized = command.trim().lowercase()
+        if (normalized.isBlank() || normalized.length > MAX_COMMAND_LENGTH) return false
+        if (FORBIDDEN_SHELL_CHARS.any { normalized.contains(it) }) return false
+        if (FORBIDDEN_COMMAND_SNIPPETS.any { snippet -> normalized.contains(snippet) }) return false
+        val firstToken = normalized.substringBefore(' ').trim()
+        return SAFE_COMMAND_PREFIXES.contains(firstToken)
     }
 
     private fun parseArguments(rawArguments: String): JSONObject {
@@ -319,6 +337,7 @@ class AiChatClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+        private const val MAX_COMMAND_LENGTH = 5000
         private val FORBIDDEN_COMMAND_SNIPPETS = listOf(
             "rm -rf /",
             ":(){",
@@ -327,6 +346,41 @@ class AiChatClient(
             "poweroff",
             "mkfs",
             "dd if="
+        )
+        private val FORBIDDEN_SHELL_CHARS = listOf(";", "&&", "||", "|", ">", "<", "`", "$(")
+        private val SAFE_COMMAND_PREFIXES = setOf(
+            "pwd",
+            "ls",
+            "cat",
+            "head",
+            "tail",
+            "echo",
+            "grep",
+            "find",
+            "sed",
+            "awk",
+            "touch",
+            "mkdir",
+            "cp",
+            "mv",
+            "du",
+            "df",
+            "whoami",
+            "uname",
+            "env",
+            "git",
+            "python",
+            "python3",
+            "node",
+            "npm",
+            "pip",
+            "gcc",
+            "g++",
+            "clang",
+            "javac",
+            "java",
+            "cmake",
+            "make"
         )
     }
 }
