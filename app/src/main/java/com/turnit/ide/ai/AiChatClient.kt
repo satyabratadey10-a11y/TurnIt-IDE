@@ -23,15 +23,18 @@ class AiChatClient(
     private val allowedRoot: File = context.filesDir.canonicalFile
 
     suspend fun sendMessage(
+        context: Context,
         chatHistory: MutableList<JSONObject>,
         selectedModel: String,
         apiKey: String?,
         maxIterations: Int = 5
     ): String = withContext(Dispatchers.IO) {
+        val absoluteSystemMessage = buildAbsoluteSystemMessage(context.applicationContext)
         return@withContext sendMessageRecursive(
             chatHistory = chatHistory,
             selectedModel = selectedModel,
             apiKey = apiKey?.takeIf { it.isNotBlank() },
+            absoluteSystemMessage = absoluteSystemMessage,
             maxIterations = maxIterations,
             iteration = 0
         )
@@ -41,6 +44,7 @@ class AiChatClient(
         chatHistory: MutableList<JSONObject>,
         selectedModel: String,
         apiKey: String?,
+        absoluteSystemMessage: String,
         maxIterations: Int,
         iteration: Int
     ): String {
@@ -50,7 +54,7 @@ class AiChatClient(
 
         val payload = JSONObject()
             .put("model", resolveModel(selectedModel))
-            .put("messages", JSONArray(chatHistory))
+            .put("messages", JSONArray(buildRequestMessages(chatHistory, absoluteSystemMessage)))
             .put("tools", buildToolsArray())
             .put("tool_choice", "auto")
 
@@ -119,6 +123,7 @@ class AiChatClient(
                     chatHistory = chatHistory,
                     selectedModel = selectedModel,
                     apiKey = apiKey,
+                    absoluteSystemMessage = absoluteSystemMessage,
                     maxIterations = maxIterations,
                     iteration = iteration + 1
                 )
@@ -126,6 +131,38 @@ class AiChatClient(
         } catch (e: Exception) {
             "AI request exception: ${e.message ?: e.toString()}"
         }
+    }
+
+    private fun buildAbsoluteSystemMessage(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val globalPrompt = prefs.getString(KEY_GLOBAL_SYSTEM_PROMPT, "").orEmpty()
+        val skillsDir = File(context.filesDir, "skills")
+        val combinedSkills = if (!skillsDir.exists() || !skillsDir.isDirectory) {
+            ""
+        } else {
+            skillsDir.listFiles { file -> file.isFile && file.name.endsWith(".md", ignoreCase = true) }
+                ?.sortedBy { it.name.lowercase() }
+                ?.joinToString(separator = "\n\n") { it.readText() }
+                .orEmpty()
+        }
+        return globalPrompt + "\n\n--- CUSTOM SKILLS ---\n" + combinedSkills
+    }
+
+    private fun buildRequestMessages(
+        chatHistory: List<JSONObject>,
+        absoluteSystemMessage: String
+    ): List<JSONObject> {
+        val requestMessages = mutableListOf(
+            JSONObject()
+                .put("role", "system")
+                .put("content", absoluteSystemMessage)
+        )
+        chatHistory.forEach { message ->
+            if (message.optString("role") != "system") {
+                requestMessages.add(JSONObject(message.toString()))
+            }
+        }
+        return requestMessages
     }
 
     private suspend fun executeTool(functionName: String, rawArguments: String): String {
@@ -345,6 +382,8 @@ class AiChatClient(
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+        private const val PREFS_NAME = "ai_chat_prefs"
+        private const val KEY_GLOBAL_SYSTEM_PROMPT = "global_system_prompt"
         private const val MAX_COMMAND_LENGTH = 5000
         private const val MAX_COMMAND_OUTPUT_CHARS = 100_000
         private val FORBIDDEN_COMMAND_SNIPPETS = listOf(
