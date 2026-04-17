@@ -85,7 +85,7 @@ class FirebaseAuthManager(
         val uid = firebaseAuth.currentUser?.uid ?: return
         val profile = mapOf(
             "email" to email,
-            "updatedAt" to System.currentTimeMillis()
+            "updatedAtMillis" to System.currentTimeMillis()
         )
         try {
             firestore.collection("users")

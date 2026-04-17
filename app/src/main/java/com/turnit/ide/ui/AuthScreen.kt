@@ -116,8 +116,12 @@ fun AuthScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            if (email.isBlank() || password.isBlank()) {
-                                message = "Enter email and password"
+                            if (!validateCredentials(
+                                    email = email,
+                                    password = password,
+                                    onValidationError = { message = it }
+                                )
+                            ) {
                                 return@launch
                             }
                             isLoading = true
@@ -140,8 +144,12 @@ fun AuthScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            if (email.isBlank() || password.isBlank()) {
-                                message = "Enter email and password"
+                            if (!validateCredentials(
+                                    email = email,
+                                    password = password,
+                                    onValidationError = { message = it }
+                                )
+                            ) {
                                 return@launch
                             }
                             isLoading = true
@@ -228,3 +236,16 @@ private fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = IdeColors.TextSecondary,
     cursorColor = IdeColors.AccentBlue
 )
+
+private inline fun validateCredentials(
+    email: String,
+    password: String,
+    onValidationError: (String) -> Unit
+): Boolean {
+    return if (email.isBlank() || password.isBlank()) {
+        onValidationError("Enter email and password")
+        false
+    } else {
+        true
+    }
+}

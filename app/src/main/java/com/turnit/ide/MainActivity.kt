@@ -38,6 +38,11 @@ private const val PAYLOAD_URL =
 
 private const val PAYLOAD_SHA256 = "SKIP"
 
+/**
+ * Main entry activity.
+ * Uses FragmentActivity so the existing BiometricPrompt flow can run after Firebase authentication,
+ * before setup/bootstrap and shell loading.
+ */
 class MainActivity : FragmentActivity() {
 
     private val downloadEngine by lazy { DownloadEngine(this) }
