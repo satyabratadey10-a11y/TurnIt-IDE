@@ -169,7 +169,7 @@ fun AuthScreen(
                         message = "Google Sign-In will be enabled after app configuration is complete"
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = false,
+                    enabled = !isLoading,
                     colors = ButtonDefaults.buttonColors(containerColor = IdeColors.BgSurface)
                 ) {
                     Text("Sign in with Google")

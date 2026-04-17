@@ -92,7 +92,7 @@ class FirebaseAuthManager(
                 .awaitVoid()
         } catch (exception: Exception) {
             Log.w("FirebaseAuthManager", "User profile sync failed", exception)
-            lastErrorMessage = "Signed in, but profile sync failed"
+            lastErrorMessage = "Profile sync failed - some cloud features may be unavailable"
         }
     }
 }

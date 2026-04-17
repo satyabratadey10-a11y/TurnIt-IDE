@@ -60,7 +60,7 @@ class MainActivity : FragmentActivity() {
                         }
                         var isBiometricUnlocked by remember { mutableStateOf(false) }
                         var biometricError by remember { mutableStateOf<String?>(null) }
-                        var biometricRequested by remember(isAuthenticated) { mutableStateOf(false) }
+                        var biometricRequested by remember { mutableStateOf(false) }
                         var phase by remember {
                             mutableStateOf<SetupPhase>(
                                 if (extractionEngine.isRootfsPresent()) SetupPhase.Complete
