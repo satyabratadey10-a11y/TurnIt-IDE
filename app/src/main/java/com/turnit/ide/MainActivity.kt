@@ -90,10 +90,6 @@ private fun MainAppContent() {
                 }
             }
 
-            LaunchedEffect(Unit) {
-                isAuthenticated = firebaseAuth.currentUser != null
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()

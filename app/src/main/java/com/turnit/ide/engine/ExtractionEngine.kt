@@ -11,24 +11,25 @@ class ExtractionEngine(private val appContext: Context? = null) {
         private const val TAG = "ExtractionEngine"
     }
 
-    suspend fun bootstrapEnvironment(context: Context): Boolean = withContext(Dispatchers.IO) {
+    suspend fun bootstrapEnvironment(context: Context? = appContext): Boolean = withContext(Dispatchers.IO) {
+        val targetContext = context ?: return@withContext false
         runCatching {
-            val prootFile = File(context.filesDir, "proot")
-            val rootfsDir = File(context.filesDir, "rootfs")
+            val prootFile = File(targetContext.filesDir, "proot")
+            val rootfsDir = File(targetContext.filesDir, "rootfs")
 
             if (prootFile.exists() && rootfsDir.exists()) {
                 return@withContext true
             }
 
-            context.assets.open("proot").use { input ->
+            targetContext.assets.open("proot").use { input ->
                 prootFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
             prootFile.setExecutable(true, false)
 
-            val tempFile = File(context.cacheDir, "ubuntu.tar.gz")
-            context.assets.open("ubuntu.tar.gz").use { input ->
+            val tempFile = File(targetContext.cacheDir, "ubuntu.tar.gz")
+            targetContext.assets.open("ubuntu.tar.gz").use { input ->
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
