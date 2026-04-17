@@ -21,7 +21,10 @@ class FirebaseAuthManager(
     var lastErrorMessage: String? = null
         private set
 
+    fun isAuthenticated(): Boolean = firebaseAuth.currentUser != null
+
     suspend fun signInWithEmail(email: String, password: String): AuthResult? {
+        lastErrorMessage = null
         return try {
             val result = firebaseAuth
                 .signInWithEmailAndPassword(email, password)
@@ -37,6 +40,7 @@ class FirebaseAuthManager(
     }
 
     suspend fun signUpWithEmail(email: String, password: String): AuthResult? {
+        lastErrorMessage = null
         return try {
             val result = firebaseAuth
                 .createUserWithEmailAndPassword(email, password)
@@ -63,6 +67,7 @@ class FirebaseAuthManager(
     }
 
     suspend fun signInWithGoogleIdToken(idToken: String): AuthResult? {
+        lastErrorMessage = null
         return try {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val result = firebaseAuth.signInWithCredential(credential).awaitResult()

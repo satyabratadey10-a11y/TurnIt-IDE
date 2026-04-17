@@ -56,7 +56,7 @@ class MainActivity : FragmentActivity() {
                 setContent {
                     TurnItIdeTheme {
                         var isAuthenticated by remember {
-                            mutableStateOf(FirebaseAuth.getInstance().currentUser != null)
+                            mutableStateOf(authManager.isAuthenticated())
                         }
                         var isBiometricUnlocked by remember { mutableStateOf(false) }
                         var biometricError by remember { mutableStateOf<String?>(null) }
