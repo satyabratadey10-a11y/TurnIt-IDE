@@ -145,7 +145,14 @@ class AiChatClient(
                 ?.joinToString(separator = "\n\n") { it.readText() }
                 .orEmpty()
         }
-        return globalPrompt + "\n\n--- CUSTOM SKILLS ---\n" + combinedSkills
+        return buildString {
+            if (globalPrompt.isNotBlank()) {
+                append(globalPrompt.trim())
+                append("\n\n")
+            }
+            append("--- CUSTOM SKILLS ---\n")
+            append(combinedSkills)
+        }
     }
 
     private fun buildRequestMessages(
@@ -226,10 +233,10 @@ class AiChatClient(
         if (!originalFile.isAbsolute) {
             throw IllegalArgumentException("Absolute path required: $path")
         }
-        val target = File(path).canonicalFile
-        if (Files.isSymbolicLink(target.toPath())) {
+        if (Files.isSymbolicLink(originalFile.toPath())) {
             throw IllegalArgumentException("Symbolic links are not allowed: $path")
         }
+        val target = originalFile.canonicalFile
         val allowedPath = allowedRoot.path
         val targetPath = target.path
         if (targetPath != allowedPath && !targetPath.startsWith("$allowedPath${File.separator}")) {
