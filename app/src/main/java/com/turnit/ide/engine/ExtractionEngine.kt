@@ -6,7 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class ExtractionEngine {
+class ExtractionEngine(private val appContext: Context? = null) {
     companion object {
         private const val TAG = "ExtractionEngine"
     }
