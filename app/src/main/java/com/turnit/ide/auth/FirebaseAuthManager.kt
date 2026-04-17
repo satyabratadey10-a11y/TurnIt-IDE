@@ -1,6 +1,7 @@
 package com.turnit.ide.auth
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -16,6 +17,9 @@ class FirebaseAuthManager(
     private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
+    @Volatile
+    var lastErrorMessage: String? = null
+        private set
 
     suspend fun signInWithEmail(email: String, password: String): AuthResult? {
         return try {
@@ -23,8 +27,11 @@ class FirebaseAuthManager(
                 .signInWithEmailAndPassword(email, password)
                 .awaitResult()
             syncUserProfile(email)
+            lastErrorMessage = null
             result
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
+            lastErrorMessage = exception.message ?: "Unable to sign in"
+            Log.e("FirebaseAuthManager", "Email sign-in failed", exception)
             null
         }
     }
@@ -35,8 +42,11 @@ class FirebaseAuthManager(
                 .createUserWithEmailAndPassword(email, password)
                 .awaitResult()
             syncUserProfile(email)
+            lastErrorMessage = null
             result
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
+            lastErrorMessage = exception.message ?: "Unable to create account"
+            Log.e("FirebaseAuthManager", "Email sign-up failed", exception)
             null
         }
     }
@@ -60,8 +70,11 @@ class FirebaseAuthManager(
             if (!email.isNullOrBlank()) {
                 syncUserProfile(email)
             }
+            lastErrorMessage = null
             result
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
+            lastErrorMessage = exception.message ?: "Unable to sign in with Google"
+            Log.e("FirebaseAuthManager", "Google sign-in failed", exception)
             null
         }
     }
@@ -72,10 +85,15 @@ class FirebaseAuthManager(
             "email" to email,
             "updatedAt" to System.currentTimeMillis()
         )
-        firestore.collection("users")
-            .document(uid)
-            .set(profile)
-            .awaitVoid()
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .set(profile)
+                .awaitVoid()
+        } catch (exception: Exception) {
+            Log.w("FirebaseAuthManager", "User profile sync failed", exception)
+            lastErrorMessage = "Signed in, but profile sync failed"
+        }
     }
 }
 

@@ -128,7 +128,7 @@ fun AuthScreen(
                             if (result != null) {
                                 onAuthenticated()
                             } else {
-                                message = "Login failed"
+                                message = authManager.lastErrorMessage ?: "Invalid email or password"
                             }
                         }
                     },
@@ -152,7 +152,7 @@ fun AuthScreen(
                             if (result != null) {
                                 onAuthenticated()
                             } else {
-                                message = "Sign up failed"
+                                message = authManager.lastErrorMessage ?: "Sign up failed. Check email/password requirements."
                             }
                         }
                     },
@@ -166,9 +166,10 @@ fun AuthScreen(
                 Button(
                     onClick = {
                         authManager.buildGoogleSignInClient(context = context, webClientId = null)
-                        message = "Google Sign-In launcher setup placeholder ready"
+                        message = "Google Sign-In will be enabled after app configuration is complete"
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = false,
                     colors = ButtonDefaults.buttonColors(containerColor = IdeColors.BgSurface)
                 ) {
                     Text("Sign in with Google")
