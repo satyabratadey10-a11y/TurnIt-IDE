@@ -30,7 +30,6 @@ class FirebaseAuthManager(
                 .signInWithEmailAndPassword(email, password)
                 .awaitResult()
             syncUserProfile(email)
-            lastErrorMessage = null
             result
         } catch (exception: Exception) {
             lastErrorMessage = exception.message ?: "Unable to sign in"
@@ -46,7 +45,6 @@ class FirebaseAuthManager(
                 .createUserWithEmailAndPassword(email, password)
                 .awaitResult()
             syncUserProfile(email)
-            lastErrorMessage = null
             result
         } catch (exception: Exception) {
             lastErrorMessage = exception.message ?: "Unable to create account"
@@ -75,7 +73,6 @@ class FirebaseAuthManager(
             if (!email.isNullOrBlank()) {
                 syncUserProfile(email)
             }
-            lastErrorMessage = null
             result
         } catch (exception: Exception) {
             lastErrorMessage = exception.message ?: "Unable to sign in with Google"

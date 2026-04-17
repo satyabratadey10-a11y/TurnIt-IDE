@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,22 @@ class MainActivity : FragmentActivity() {
                             )
                         }
                         var isBuildRunning by remember { mutableStateOf(false) }
+
+                        DisposableEffect(Unit) {
+                            val listener = FirebaseAuth.AuthStateListener { auth ->
+                                val hasUser = auth.currentUser != null
+                                isAuthenticated = hasUser
+                                if (!hasUser) {
+                                    isBiometricUnlocked = false
+                                    biometricRequested = false
+                                    biometricError = null
+                                }
+                            }
+                            FirebaseAuth.getInstance().addAuthStateListener(listener)
+                            onDispose {
+                                FirebaseAuth.getInstance().removeAuthStateListener(listener)
+                            }
+                        }
 
                         if (!isAuthenticated) {
                             AuthScreen(
