@@ -129,7 +129,9 @@ private fun MainAppContent() {
                         CircularProgressIndicator()
                         Text("Bootstrapping Terminal Engine...")
                     } else {
-                        Text(bootstrapError!!, modifier = Modifier.padding(horizontal = 16.dp))
+                        bootstrapError?.let {
+                            Text(it, modifier = Modifier.padding(horizontal = 16.dp))
+                        }
                         Button(onClick = {
                             bootstrapError = null
                             bootstrapRetryToken++

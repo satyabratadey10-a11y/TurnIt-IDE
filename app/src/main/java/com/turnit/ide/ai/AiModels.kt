@@ -1,6 +1,17 @@
 package com.turnit.ide.ai
 
-data class ChatMessage(val role: String, val content: String)
+import java.util.concurrent.atomic.AtomicLong
+
+private object ChatMessageIdGenerator {
+    private val nextId = AtomicLong(1L)
+    fun next(): Long = nextId.getAndIncrement()
+}
+
+data class ChatMessage(
+    val role: String,
+    val content: String,
+    val id: Long = ChatMessageIdGenerator.next()
+)
 
 data class AiModel(
     val name: String,

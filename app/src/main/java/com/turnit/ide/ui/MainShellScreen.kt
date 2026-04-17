@@ -155,17 +155,18 @@ fun MainShellScreen(
         )
     }
     val modelOptions = remember {
+        val geminiOpenAiEndpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         mutableStateListOf(
             AiModel(
                 "Gemini 3 Flash",
                 "gemini-3-flash",
-                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                geminiOpenAiEndpoint,
                 ""
             ),
             AiModel(
                 "Gemini 2.5 Fast",
                 "gemini-2.5-flash",
-                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                geminiOpenAiEndpoint,
                 ""
             ),
             AiModel(
@@ -216,6 +217,7 @@ fun MainShellScreen(
         chatInput = ""
 
         val loadingBubble = ChatMessage(role = "assistant", content = "...")
+        val loadingBubbleId = loadingBubble.id
         chatMessages.add(loadingBubble)
 
         scope.launch {
@@ -227,7 +229,7 @@ fun MainShellScreen(
                 )
                 chatMessages.add(ChatMessage(role = "assistant", content = response))
             } finally {
-                val loadingBubbleIndex = chatMessages.indexOfLast { it === loadingBubble }
+                val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
                 if (loadingBubbleIndex >= 0) {
                     chatMessages.removeAt(loadingBubbleIndex)
                 }
