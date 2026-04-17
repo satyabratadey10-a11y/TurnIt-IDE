@@ -2,8 +2,6 @@ package com.turnit.ide.ai
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import com.turnit.ide.ui.AiModel
-import com.turnit.ide.ui.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -21,16 +19,19 @@ object AiChatClient {
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    @Suppress("UNUSED_PARAMETER")
     suspend fun sendMessage(
         model: AiModel,
         chatHistory: List<ChatMessage>,
         newPrompt: String
     ): String = withContext(Dispatchers.IO) {
         try {
+            val messages = buildList {
+                addAll(chatHistory)
+                add(ChatMessage(role = "user", content = newPrompt))
+            }
             val payload = mapOf(
                 "model" to model.modelId,
-                "messages" to chatHistory.map {
+                "messages" to messages.map {
                     mapOf(
                         "role" to it.role,
                         "content" to it.content

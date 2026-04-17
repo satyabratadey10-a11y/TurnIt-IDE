@@ -55,6 +55,8 @@ private fun MainAppContent() {
     var isBuildRunning by remember { mutableStateOf(false) }
     var biometricError by remember { mutableStateOf<String?>(null) }
     var biometricRetryToken by remember { mutableStateOf(0) }
+    var bootstrapError by remember { mutableStateOf<String?>(null) }
+    var bootstrapRetryToken by remember { mutableStateOf(0) }
 
     LaunchedEffect(firebaseAuth.currentUser?.uid) {
         isAuthenticated = firebaseAuth.currentUser != null
@@ -114,20 +116,36 @@ private fun MainAppContent() {
 
         !isBootstrapped -> {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(IdeColors.Bg),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator()
-                    Text("Bootstrapping Terminal Engine...")
+                    if (bootstrapError == null) {
+                        CircularProgressIndicator()
+                        Text("Bootstrapping Terminal Engine...")
+                    } else {
+                        Text(bootstrapError!!, modifier = Modifier.padding(horizontal = 16.dp))
+                        Button(onClick = {
+                            bootstrapError = null
+                            bootstrapRetryToken++
+                        }) {
+                            Text("Retry bootstrap")
+                        }
+                    }
                 }
             }
 
-            LaunchedEffect(Unit) {
-                isBootstrapped = ExtractionEngine(context).bootstrapEnvironment(context)
+            LaunchedEffect(bootstrapRetryToken) {
+                val bootstrapSucceeded = ExtractionEngine(context).bootstrapEnvironment(context)
+                isBootstrapped = bootstrapSucceeded
+                if (!bootstrapSucceeded) {
+                    bootstrapError = "Failed to bootstrap terminal environment."
+                }
             }
         }
 

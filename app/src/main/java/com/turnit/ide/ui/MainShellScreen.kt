@@ -83,21 +83,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
+import com.turnit.ide.ai.ChatMessage
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
-data class ChatMessage(val role: String, val content: String)
-data class AiModel(
-    val name: String,
-    val modelId: String,
-    val apiUrl: String,
-    val apiKey: String,
-    val isCustom: Boolean = false
-)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
@@ -165,13 +159,13 @@ fun MainShellScreen(
             AiModel(
                 "Gemini 3 Flash",
                 "gemini-3-flash",
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                 ""
             ),
             AiModel(
                 "Gemini 2.5 Fast",
                 "gemini-2.5-flash",
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                 ""
             ),
             AiModel(
@@ -215,6 +209,8 @@ fun MainShellScreen(
         if (prompt.isBlank()) {
             return@send
         }
+        val modelSnapshot = selectedModel
+        val chatHistorySnapshot = chatMessages.toList()
 
         chatMessages.add(ChatMessage(role = "user", content = prompt))
         chatInput = ""
@@ -225,13 +221,16 @@ fun MainShellScreen(
         scope.launch {
             try {
                 val response = AiChatClient.sendMessage(
-                    model = selectedModel,
-                    chatHistory = chatMessages.toList().dropLast(1),
+                    model = modelSnapshot,
+                    chatHistory = chatHistorySnapshot,
                     newPrompt = prompt
                 )
                 chatMessages.add(ChatMessage(role = "assistant", content = response))
             } finally {
-                chatMessages.remove(loadingBubble)
+                val loadingBubbleIndex = chatMessages.indexOfLast { it === loadingBubble }
+                if (loadingBubbleIndex >= 0) {
+                    chatMessages.removeAt(loadingBubbleIndex)
+                }
             }
         }
     }
