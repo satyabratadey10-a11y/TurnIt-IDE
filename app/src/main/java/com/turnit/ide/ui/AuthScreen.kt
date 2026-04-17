@@ -35,7 +35,6 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +53,6 @@ fun AuthScreen(
     onAuthenticated: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -165,7 +163,6 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        authManager.buildGoogleSignInClient(context = context, webClientId = null)
                         message = "Google Sign-In will be enabled after app configuration is complete"
                     },
                     modifier = Modifier.fillMaxWidth(),
