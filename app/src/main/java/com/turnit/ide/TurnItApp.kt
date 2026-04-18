@@ -11,8 +11,7 @@ import kotlin.system.exitProcess
 class TurnItApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
             val stackTrace = Log.getStackTraceString(e)
             val intent = Intent(this, CrashActivity::class.java).apply {
                 putExtra("CRASH_LOG", stackTrace)
@@ -28,17 +27,13 @@ class TurnItApp : Application() {
                 val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 alarmManager.set(
                     AlarmManager.RTC,
-                    System.currentTimeMillis(),
+                    System.currentTimeMillis() + 100,
                     pendingIntent
                 )
             } catch (launchError: Throwable) {
                 Log.e("TurnItApp", "Failed to schedule CrashActivity", launchError)
             } finally {
-                if (previousHandler != null) {
-                    previousHandler.uncaughtException(thread, e)
-                } else {
-                    exitProcess(10)
-                }
+                exitProcess(10)
             }
         }
     }
