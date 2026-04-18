@@ -1,6 +1,6 @@
 package com.turnit.ide.ui
 
-import android.content.Context
+import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -38,8 +38,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.BottomSheetScaffold
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -80,31 +80,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.turnit.ide.auth.TokenManager
-import com.turnit.ide.engine.ShellEngine
+import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
-import kotlinx.coroutines.Dispatchers
+import com.turnit.ide.ai.ChatMessage
+import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
-private data class ChatMessage(val text: String, val fromUser: Boolean)
-private data class PersistedChatState(
-    val messages: List<ChatMessage>,
-    val history: List<JSONObject>
-)
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
-private const val DEFAULT_ASSISTANT_MESSAGE = "Welcome to TurnIt AI assistant."
-private const val SYSTEM_PROMPT_PREFS_NAME = "ai_chat_prefs"
-private const val SYSTEM_PROMPT_PREFS_KEY = "global_system_prompt"
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,7 +111,6 @@ fun MainShellScreen(
     var leftPaneWeight by remember { mutableFloatStateOf(0.5f) }
 
     val shellEngine = remember { ShellEngine(context) }
-    val tokenManager = remember { TokenManager(context) }
     val consoleLogs = remember {
         mutableStateListOf(
             "TurnIt IDE Shell Engine (v1.0)\n",
@@ -159,86 +146,92 @@ fun MainShellScreen(
         }
     }
 
-    val modelOptions = listOf("Gemini 3 Flash", "Gemini 2.5 Fast", "Qwen 3.5")
-    var selectedModel by remember { mutableStateOf(modelOptions.first()) }
-    val aiChatClient = remember { AiChatClient(context = context, shellEngine = shellEngine) }
-    var isAgentWorking by remember { mutableStateOf(false) }
-    var showSystemPromptDialog by remember { mutableStateOf(false) }
-    val systemPrefs = remember {
-        context.getSharedPreferences(SYSTEM_PROMPT_PREFS_NAME, Context.MODE_PRIVATE)
-    }
-    var systemPromptDraft by remember {
-        mutableStateOf(systemPrefs.getString(SYSTEM_PROMPT_PREFS_KEY, "").orEmpty())
-    }
-    val chatMessages = remember {
-        mutableStateListOf(
-            ChatMessage(DEFAULT_ASSISTANT_MESSAGE, false)
+    val addCustomModelOption = remember {
+        AiModel(
+            name = "+ Add Custom Model",
+            modelId = "",
+            apiUrl = "",
+            apiKey = ""
         )
     }
-    val chatHistory = remember {
+    val modelOptions = remember {
+        val geminiOpenAiEndpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         mutableStateListOf(
-            JSONObject()
-                .put("role", "assistant")
-                .put("content", DEFAULT_ASSISTANT_MESSAGE)
+            AiModel(
+                "Gemini 3 Flash",
+                "gemini-3-flash",
+                geminiOpenAiEndpoint,
+                ""
+            ),
+            AiModel(
+                "Gemini 2.5 Fast",
+                "gemini-2.5-flash",
+                geminiOpenAiEndpoint,
+                ""
+            ),
+            AiModel(
+                "qwen-plus",
+                "qwen-plus",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                ""
+            ),
+            addCustomModelOption
+        )
+    }
+    var selectedModel by remember { mutableStateOf(modelOptions.first()) }
+    var showCustomModelDialog by remember { mutableStateOf(false) }
+    var customModelName by remember { mutableStateOf("") }
+    var customModelId by remember { mutableStateOf("") }
+    var customModelUrl by remember { mutableStateOf("") }
+    var customModelApiKey by remember { mutableStateOf("") }
+    val clearCustomModelInputs = {
+        customModelName = ""
+        customModelId = ""
+        customModelUrl = ""
+        customModelApiKey = ""
+    }
+    val isCustomModelUrlValid = remember(customModelUrl) {
+        val trimmedUrl = customModelUrl.trim()
+        val parsedUrl = Uri.parse(trimmedUrl)
+        parsedUrl.scheme == "https" && !parsedUrl.host.isNullOrBlank()
+    }
+    val isCustomModelInputValid =
+        customModelName.isNotBlank() &&
+            customModelId.isNotBlank() &&
+            isCustomModelUrlValid
+    val chatMessages = remember {
+        mutableStateListOf(
+            ChatMessage(role = "assistant", content = "Welcome to TurnIt AI assistant.")
         )
     }
     var chatInput by remember { mutableStateOf("") }
+    val sendChatPrompt = send@{
+        val prompt = chatInput.trim()
+        if (prompt.isBlank()) {
+            return@send
+        }
+        val modelSnapshot = selectedModel
+        val chatHistorySnapshot = chatMessages.toList()
 
-    LaunchedEffect(selectedModel) {
-        val persistedState = loadModelChatState(context, selectedModel)
-        chatMessages.clear()
-        chatMessages.addAll(persistedState.messages)
-        chatHistory.clear()
-        chatHistory.addAll(persistedState.history)
-    }
+        chatMessages.add(ChatMessage(role = "user", content = prompt))
+        chatInput = ""
 
-    val sendToAgent = {
-        if (!isAgentWorking && chatInput.isNotBlank()) {
-            val modelAtSend = selectedModel
-            val userMessage = chatInput.trim()
-            chatMessages.add(ChatMessage(userMessage, true))
-            chatHistory.add(
-                JSONObject()
-                    .put("role", "user")
-                    .put("content", userMessage)
-            )
-            chatInput = ""
-            isAgentWorking = true
-            scope.launch {
-                appendMessageToModelFile(context, modelAtSend, "user", userMessage)
-                val requestHistory = chatHistory.map { JSONObject(it.toString()) }.toMutableList()
-                val apiKey = tokenManager.getAccessToken()
-                if (apiKey.isNullOrBlank()) {
-                    val authMessage = "Authentication failed: No API key available."
-                    if (selectedModel == modelAtSend) {
-                        chatMessages.add(ChatMessage(authMessage, false))
-                    }
-                    appendMessageToModelFile(context, modelAtSend, "assistant", authMessage)
-                    isAgentWorking = false
-                    return@launch
-                }
-                try {
-                    val response = aiChatClient.sendMessage(
-                        context = context,
-                        chatHistory = requestHistory,
-                        selectedModel = modelAtSend,
-                        apiKey = apiKey,
-                        maxIterations = 5
-                    )
-                    if (selectedModel == modelAtSend) {
-                        chatHistory.clear()
-                        chatHistory.addAll(requestHistory)
-                        chatMessages.add(ChatMessage(response, false))
-                    }
-                    appendMessageToModelFile(context, modelAtSend, "assistant", response)
-                } catch (e: Exception) {
-                    val errorMessage = "Agent request failed: ${e.message ?: e.toString()}"
-                    if (selectedModel == modelAtSend) {
-                        chatMessages.add(ChatMessage(errorMessage, false))
-                    }
-                    appendMessageToModelFile(context, modelAtSend, "assistant", errorMessage)
-                } finally {
-                    isAgentWorking = false
+        val loadingBubble = ChatMessage(role = "assistant", content = "...")
+        val loadingBubbleId = loadingBubble.id
+        chatMessages.add(loadingBubble)
+
+        scope.launch {
+            try {
+                val response = AiChatClient.sendMessage(
+                    model = modelSnapshot,
+                    chatHistory = chatHistorySnapshot,
+                    newPrompt = prompt
+                )
+                chatMessages.add(ChatMessage(role = "assistant", content = response))
+            } finally {
+                val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
+                if (loadingBubbleIndex >= 0) {
+                    chatMessages.removeAt(loadingBubbleIndex)
                 }
             }
         }
@@ -258,19 +251,9 @@ fun MainShellScreen(
                     selected = false,
                     onClick = {
                         chatMessages.clear()
-                        chatMessages.add(ChatMessage("New chat started.", false))
-                        chatHistory.clear()
-                        chatHistory.add(
-                            JSONObject()
-                                .put("role", "assistant")
-                                .put("content", "New chat started.")
-                        )
+                        chatMessages.add(ChatMessage(role = "assistant", content = "New chat started."))
                         chatInput = ""
-                        isAgentWorking = false
-                        scope.launch {
-                            resetModelChatState(context, selectedModel, "New chat started.")
-                            drawerState.close()
-                        }
+                        scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
                         unselectedContainerColor = Color.Transparent,
@@ -298,23 +281,6 @@ fun MainShellScreen(
                     label = { Text("API Key Settings") },
                     selected = false,
                     onClick = {
-                        scope.launch { drawerState.close() }
-                    },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = Color.Transparent,
-                        unselectedTextColor = IdeColors.TextSecondary,
-                        unselectedIconColor = IdeColors.TextMuted
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Filled.Terminal, contentDescription = "Custom Instructions") },
-                    label = { Text("Custom Instructions") },
-                    selected = false,
-                    onClick = {
-                        systemPromptDraft =
-                            systemPrefs.getString(SYSTEM_PROMPT_PREFS_KEY, "").orEmpty()
-                        showSystemPromptDialog = true
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -400,12 +366,18 @@ fun MainShellScreen(
                         ChatPane(
                             selectedModel = selectedModel,
                             modelOptions = modelOptions,
-                            onModelSelected = { selectedModel = it },
+                            onModelSelected = { model ->
+                                if (model == addCustomModelOption) {
+                                    clearCustomModelInputs()
+                                    showCustomModelDialog = true
+                                } else {
+                                    selectedModel = model
+                                }
+                            },
                             messages = chatMessages,
-                            isAgentWorking = isAgentWorking,
                             input = chatInput,
                             onInputChange = { chatInput = it },
-                            onSend = sendToAgent
+                            onSend = sendChatPrompt
                         )
                     } else {
                         Box(
@@ -473,12 +445,18 @@ fun MainShellScreen(
                                 ChatPane(
                                     selectedModel = selectedModel,
                                     modelOptions = modelOptions,
-                                    onModelSelected = { selectedModel = it },
+                                    onModelSelected = { model ->
+                                        if (model == addCustomModelOption) {
+                                            clearCustomModelInputs()
+                                            showCustomModelDialog = true
+                                        } else {
+                                            selectedModel = model
+                                        }
+                                    },
                                     messages = chatMessages,
-                                    isAgentWorking = isAgentWorking,
                                     input = chatInput,
                                     onInputChange = { chatInput = it },
-                                    onSend = sendToAgent
+                                    onSend = sendChatPrompt
                                 )
                             }
                         }
@@ -504,32 +482,69 @@ fun MainShellScreen(
         }
     }
 
-    if (showSystemPromptDialog) {
+    if (showCustomModelDialog) {
         AlertDialog(
-            onDismissRequest = { showSystemPromptDialog = false },
-            title = { Text("Custom Instructions") },
+            onDismissRequest = {
+                showCustomModelDialog = false
+                clearCustomModelInputs()
+            },
+            title = { Text("Add Custom Model") },
             text = {
-                OutlinedTextField(
-                    value = systemPromptDraft,
-                    onValueChange = { systemPromptDraft = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 6,
-                    maxLines = 12,
-                    placeholder = { Text("Enter global system prompt...") }
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customModelName,
+                        onValueChange = { customModelName = it },
+                        label = { Text("Model Name") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelId,
+                        onValueChange = { customModelId = it },
+                        label = { Text("Model ID (API)") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelUrl,
+                        onValueChange = { customModelUrl = it },
+                        label = { Text("API Provider URL") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customModelApiKey,
+                        onValueChange = { customModelApiKey = it },
+                        label = { Text("API Key (Optional)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    systemPrefs.edit()
-                        .putString(SYSTEM_PROMPT_PREFS_KEY, systemPromptDraft)
-                        .apply()
-                    showSystemPromptDialog = false
-                }) {
+                Button(
+                    onClick = {
+                        val newModel = AiModel(
+                            name = customModelName.trim(),
+                            modelId = customModelId.trim(),
+                            apiUrl = customModelUrl.trim(),
+                            apiKey = customModelApiKey.trim(),
+                            isCustom = true
+                        )
+                        modelOptions.add(modelOptions.size - 1, newModel)
+                        selectedModel = newModel
+                        showCustomModelDialog = false
+                        clearCustomModelInputs()
+                    },
+                    enabled = isCustomModelInputValid
+                ) {
                     Text("Save")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSystemPromptDialog = false }) {
+                TextButton(
+                    onClick = {
+                        showCustomModelDialog = false
+                        clearCustomModelInputs()
+                    }
+                ) {
                     Text("Cancel")
                 }
             }
@@ -539,11 +554,10 @@ fun MainShellScreen(
 
 @Composable
 private fun ChatPane(
-    selectedModel: String,
-    modelOptions: List<String>,
-    onModelSelected: (String) -> Unit,
+    selectedModel: AiModel,
+    modelOptions: List<AiModel>,
+    onModelSelected: (AiModel) -> Unit,
     messages: List<ChatMessage>,
-    isAgentWorking: Boolean,
     input: String,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit
@@ -571,7 +585,7 @@ private fun ChatPane(
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Text(
-                text = selectedModel,
+                text = selectedModel.name,
                 color = IdeColors.TextPrimary,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp
@@ -582,7 +596,7 @@ private fun ChatPane(
             ) {
                 modelOptions.forEach { model ->
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(model) },
+                        text = { Text(model.name) },
                         onClick = {
                             onModelSelected(model)
                             modelMenuOpen = false
@@ -604,13 +618,13 @@ private fun ChatPane(
             items(messages) { message ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start
                 ) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (message.fromUser) Color(0x33FFFFFF)
+                                if (message.role == "user") Color(0x33FFFFFF)
                                 else Color(0x22161B22)
                             )
                             .border(
@@ -621,7 +635,7 @@ private fun ChatPane(
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = message.text,
+                            text = message.content,
                             color = IdeColors.TextPrimary,
                             fontSize = 12.sp
                         )
@@ -631,27 +645,6 @@ private fun ChatPane(
         }
 
         Spacer(Modifier.height(10.dp))
-
-        if (isAgentWorking) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                    color = IdeColors.AccentBlue
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Agent is working...",
-                    color = IdeColors.TextSecondary,
-                    fontSize = 12.sp
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-        }
 
         val borderSpin = rememberInfiniteTransition(label = "neon_border")
         val angle by borderSpin.animateFloat(
@@ -716,11 +709,11 @@ private fun ChatPane(
                     }
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onSend, enabled = !isAgentWorking && input.isNotBlank()) {
+                IconButton(onClick = onSend) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = "Send",
-                        tint = if (isAgentWorking || input.isBlank()) IdeColors.TextMuted else IdeColors.AccentGreen
+                        tint = IdeColors.AccentGreen
                     )
                 }
             }
@@ -882,93 +875,4 @@ private fun PlaceholderPane(label: String, accent: Color) {
             fontFamily = FontFamily.Monospace
         )
     }
-}
-
-private suspend fun loadModelChatState(context: Context, modelName: String): PersistedChatState =
-    withContext(Dispatchers.IO) {
-        val file = chatFileForModel(context, modelName)
-        if (!file.exists()) {
-            val defaultHistory = listOf(
-                JSONObject()
-                    .put("role", "assistant")
-                    .put("content", DEFAULT_ASSISTANT_MESSAGE)
-            )
-            val defaultMessages = listOf(ChatMessage(DEFAULT_ASSISTANT_MESSAGE, false))
-            val initialArray = JSONArray().put(
-                JSONObject()
-                    .put("role", "assistant")
-                    .put("content", DEFAULT_ASSISTANT_MESSAGE)
-            )
-            file.parentFile?.mkdirs()
-            file.writeText(initialArray.toString())
-            return@withContext PersistedChatState(defaultMessages, defaultHistory)
-        }
-
-        val parsed = runCatching { JSONArray(file.readText()) }.getOrDefault(JSONArray())
-        val history = mutableListOf<JSONObject>()
-        val messages = mutableListOf<ChatMessage>()
-        for (i in 0 until parsed.length()) {
-            val entry = parsed.optJSONObject(i) ?: continue
-            val role = entry.optString("role")
-            val content = entry.optString("content")
-            if (role.isBlank() || content.isBlank()) continue
-            history.add(
-                JSONObject()
-                    .put("role", role)
-                    .put("content", content)
-            )
-            if (role == "user" || role == "assistant") {
-                messages.add(ChatMessage(content, role == "user"))
-            }
-        }
-
-        if (history.isEmpty()) {
-            val fallback = JSONObject()
-                .put("role", "assistant")
-                .put("content", DEFAULT_ASSISTANT_MESSAGE)
-            history.add(fallback)
-            messages.add(ChatMessage(DEFAULT_ASSISTANT_MESSAGE, false))
-            file.writeText(JSONArray().put(fallback).toString())
-        }
-
-        PersistedChatState(messages, history)
-    }
-
-private suspend fun appendMessageToModelFile(
-    context: Context,
-    modelName: String,
-    role: String,
-    content: String
-) = withContext(Dispatchers.IO) {
-    val file = chatFileForModel(context, modelName)
-    file.parentFile?.mkdirs()
-    val existingArray = if (!file.exists()) JSONArray() else runCatching {
-        JSONArray(file.readText())
-    }.getOrDefault(JSONArray())
-    existingArray.put(
-        JSONObject()
-            .put("role", role)
-            .put("content", content)
-    )
-    file.writeText(existingArray.toString())
-}
-
-private suspend fun resetModelChatState(context: Context, modelName: String, assistantMessage: String) =
-    withContext(Dispatchers.IO) {
-        val file = chatFileForModel(context, modelName)
-        file.parentFile?.mkdirs()
-        file.writeText(
-            JSONArray()
-                .put(
-                    JSONObject()
-                        .put("role", "assistant")
-                        .put("content", assistantMessage)
-                )
-                .toString()
-        )
-    }
-
-private fun chatFileForModel(context: Context, modelName: String): File {
-    val safeModelName = modelName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    return File(context.filesDir, "chats/$safeModelName.json")
 }
