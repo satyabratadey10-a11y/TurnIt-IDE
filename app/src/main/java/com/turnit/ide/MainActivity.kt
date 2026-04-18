@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.turnit.ide.auth.FirebaseAuthManager
@@ -30,7 +32,6 @@ import com.turnit.ide.ui.AuthScreen
 import com.turnit.ide.ui.IdeColors
 import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.TurnItIdeTheme
-import com.turnit.ide.ui.triggerBiometricPrompt
 
 class MainActivity : FragmentActivity() {
     private val authManager by lazy { FirebaseAuthManager() }
@@ -45,6 +46,20 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+}
+
+fun triggerBiometricPrompt(activity: FragmentActivity, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    val executor = ContextCompat.getMainExecutor(activity)
+    val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { onError(errString.toString()) }
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { onSuccess() }
+        override fun onAuthenticationFailed() { onError("Authentication failed") }
+    })
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Unlock TurnIt IDE")
+        .setNegativeButtonText("Cancel")
+        .build()
+    prompt.authenticate(info)
 }
 
 @Composable
