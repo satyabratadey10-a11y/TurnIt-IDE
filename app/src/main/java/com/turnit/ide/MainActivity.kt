@@ -59,7 +59,7 @@ class MainActivity : FragmentActivity() {
                 System.currentTimeMillis() + 100,
                 pendingIntent
             )
-            kotlin.system.exitProcess(0)
+            kotlin.system.exitProcess(1)
         }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
