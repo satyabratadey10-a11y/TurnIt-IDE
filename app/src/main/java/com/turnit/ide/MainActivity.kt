@@ -23,15 +23,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
+import com.google.firebase.auth.FirebaseAuth
+import com.turnit.ide.auth.FirebaseAuthManager
 import com.turnit.ide.engine.ExtractionEngine
+import com.turnit.ide.ui.AuthScreen
 import com.turnit.ide.ui.IdeColors
 import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.TurnItIdeTheme
 import com.turnit.ide.ui.triggerBiometricPrompt
-import com.turnit.ide.ui.LoginScreen as AuthScreen
-import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : FragmentActivity() {
+    private val authManager by lazy { FirebaseAuthManager() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,17 +41,17 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             TurnItIdeTheme {
-                MainAppContent()
+                MainAppContent(authManager = authManager)
             }
         }
     }
 }
 
 @Composable
-private fun MainAppContent() {
+private fun MainAppContent(authManager: FirebaseAuthManager) {
     val context = LocalContext.current
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
-    var isAuthenticated by remember { mutableStateOf(firebaseAuth.currentUser != null) }
+    var isAuthenticated by remember { mutableStateOf(authManager.isAuthenticated()) }
     var isBiometricUnlocked by remember { mutableStateOf(false) }
     var isBootstrapped by remember { mutableStateOf(false) }
     var isBuildRunning by remember { mutableStateOf(false) }
@@ -59,16 +61,26 @@ private fun MainAppContent() {
     var bootstrapRetryToken by remember { mutableStateOf(0) }
 
     LaunchedEffect(firebaseAuth.currentUser?.uid) {
-        isAuthenticated = firebaseAuth.currentUser != null
+        val hasUser = firebaseAuth.currentUser != null
+        isAuthenticated = hasUser
+        if (!hasUser) {
+            isBiometricUnlocked = false
+            isBootstrapped = false
+            biometricError = null
+            bootstrapError = null
+        }
     }
 
     when {
         !isAuthenticated -> {
             AuthScreen(
-                onLoginSuccess = {
-                    isAuthenticated = firebaseAuth.currentUser != null
+                authManager = authManager,
+                onAuthenticated = {
+                    isAuthenticated = authManager.isAuthenticated()
                     isBiometricUnlocked = false
                     isBootstrapped = false
+                    biometricError = null
+                    bootstrapError = null
                 }
             )
         }
@@ -129,9 +141,7 @@ private fun MainAppContent() {
                         CircularProgressIndicator()
                         Text("Bootstrapping Terminal Engine...")
                     } else {
-                        bootstrapError?.let {
-                            Text(it, modifier = Modifier.padding(horizontal = 16.dp))
-                        }
+                        Text(bootstrapError.orEmpty(), modifier = Modifier.padding(horizontal = 16.dp))
                         Button(onClick = {
                             bootstrapError = null
                             bootstrapRetryToken++

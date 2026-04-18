@@ -16,6 +16,7 @@ object AiChatClient {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
+
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -43,13 +44,12 @@ object AiChatClient {
             val requestBuilder = Request.Builder()
                 .url(model.apiUrl)
                 .post(requestBody)
+
             if (model.apiKey.isNotBlank()) {
                 requestBuilder.addHeader("Authorization", "Bearer ${model.apiKey}")
             }
 
-            val request = requestBuilder.build()
-
-            client.newCall(request).execute().use { response ->
+            client.newCall(requestBuilder.build()).execute().use { response ->
                 val bodyText = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     return@withContext "Error: HTTP ${response.code} ${response.message}"
