@@ -17,12 +17,16 @@ class TurnItApp : Application() {
             }
             try {
                 startActivity(intent)
-                thread(isDaemon = true) {
+                thread(isDaemon = false) {
                     Thread.sleep(CRASH_KILL_DELAY_MS)
                     android.os.Process.killProcess(android.os.Process.myPid())
                 }
             } catch (launchError: Throwable) {
-                Log.e("TurnItApp", "Failed to launch CrashActivity", launchError)
+                Log.e(
+                    "TurnItApp",
+                    "Failed to launch CrashActivity for exception: ${e.message}",
+                    launchError
+                )
                 previousHandler?.uncaughtException(crashedThread, e)
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
