@@ -39,6 +39,9 @@ import com.turnit.ide.ui.TurnItIdeTheme
 
 class MainActivity : FragmentActivity() {
     private val authManager by lazy { FirebaseAuthManager() }
+    private companion object {
+        const val EXIT_CODE_CRASH = 10
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
@@ -54,12 +57,12 @@ class MainActivity : FragmentActivity() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.setExact(
+            alarmManager.set(
                 AlarmManager.RTC,
                 System.currentTimeMillis() + 100,
                 pendingIntent
             )
-            kotlin.system.exitProcess(10)
+            kotlin.system.exitProcess(EXIT_CODE_CRASH)
         }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
