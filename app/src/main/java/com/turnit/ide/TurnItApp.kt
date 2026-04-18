@@ -2,14 +2,14 @@ package com.turnit.ide
 
 import android.app.Application
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
+import kotlin.concurrent.thread
 
 class TurnItApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { crashedThread, e ->
             val stackTrace = Log.getStackTraceString(e)
             val intent = Intent(this, CrashActivity::class.java).apply {
                 putExtra("CRASH_LOG", stackTrace)
@@ -17,12 +17,13 @@ class TurnItApp : Application() {
             }
             try {
                 startActivity(intent)
-                Handler(Looper.getMainLooper()).postDelayed(
-                    { android.os.Process.killProcess(android.os.Process.myPid()) },
-                    CRASH_KILL_DELAY_MS
-                )
+                thread(isDaemon = true) {
+                    Thread.sleep(CRASH_KILL_DELAY_MS)
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }
             } catch (launchError: Throwable) {
                 Log.e("TurnItApp", "Failed to launch CrashActivity", launchError)
+                previousHandler?.uncaughtException(crashedThread, e)
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
         }
