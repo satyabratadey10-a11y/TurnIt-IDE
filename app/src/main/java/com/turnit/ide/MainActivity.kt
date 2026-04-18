@@ -1,5 +1,6 @@
 package com.turnit.ide
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,9 +39,14 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
-            val crashFile = java.io.File(getExternalFilesDir(null), "crash_log.txt")
-            crashFile.writeText(android.util.Log.getStackTraceString(e))
-            kotlin.system.exitProcess(1)
+            val crashLog = android.util.Log.getStackTraceString(e)
+            val intent = Intent(this, CrashActivity::class.java).apply {
+                putExtra("CRASH_LOG", crashLog)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
+            android.os.Process.killProcess(android.os.Process.myPid())
+            kotlin.system.exitProcess(10)
         }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
