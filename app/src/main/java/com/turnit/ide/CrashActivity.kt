@@ -41,7 +41,7 @@ class CrashActivity : ComponentActivity() {
                 SelectionContainer {
                     Text(
                         crashLog,
-                        color = Color.Green,
+                        color = Color(0xFFCCCCCC),
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace
                     )
