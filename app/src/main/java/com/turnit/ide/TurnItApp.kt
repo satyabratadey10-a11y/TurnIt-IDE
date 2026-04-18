@@ -26,9 +26,9 @@ class TurnItApp : Application() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                alarmManager.setExact(
+                alarmManager.set(
                     AlarmManager.RTC,
-                    System.currentTimeMillis() + 100,
+                    System.currentTimeMillis(),
                     pendingIntent
                 )
             } catch (launchError: Throwable) {
@@ -37,7 +37,6 @@ class TurnItApp : Application() {
                 if (previousHandler != null) {
                     previousHandler.uncaughtException(thread, e)
                 } else {
-                    android.os.Process.killProcess(android.os.Process.myPid())
                     exitProcess(10)
                 }
             }
