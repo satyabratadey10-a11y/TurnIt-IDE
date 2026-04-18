@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 class CrashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val crashLog = intent.getStringExtra("CRASH_LOG") ?: "Crash log missing from intent."
+        val crashLog = intent.getStringExtra("CRASH_LOG") ?: "Crash log missing from intent"
         setContent {
             Column(
                 modifier = Modifier

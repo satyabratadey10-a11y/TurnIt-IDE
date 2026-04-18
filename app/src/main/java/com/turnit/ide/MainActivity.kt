@@ -1,5 +1,8 @@
 package com.turnit.ide
 
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -44,9 +47,18 @@ class MainActivity : FragmentActivity() {
                 putExtra("CRASH_LOG", crashLog)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             }
-            startActivity(intent)
-            Thread.sleep(300)
-            android.os.Process.killProcess(android.os.Process.myPid())
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.setExact(
+                AlarmManager.RTC,
+                System.currentTimeMillis() + 100,
+                pendingIntent
+            )
             kotlin.system.exitProcess(10)
         }
         super.onCreate(savedInstanceState)
