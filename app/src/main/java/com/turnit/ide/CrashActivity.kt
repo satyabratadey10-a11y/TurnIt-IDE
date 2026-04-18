@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 class CrashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val crashLog = intent.getStringExtra("CRASH_LOG") ?: "No crash log received"
+        val crashLog = intent.getStringExtra("CRASH_LOG") ?: "Unknown Error"
         setContent {
             Column(
                 modifier = Modifier
@@ -41,7 +41,7 @@ class CrashActivity : ComponentActivity() {
                 SelectionContainer {
                     Text(
                         crashLog,
-                        color = Color(0xFFCCCCCC),
+                        color = Color.Green,
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace
                     )
