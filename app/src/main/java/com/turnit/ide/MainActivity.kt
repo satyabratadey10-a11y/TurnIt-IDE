@@ -45,6 +45,7 @@ class MainActivity : FragmentActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             }
             startActivity(intent)
+            Thread.sleep(300)
             android.os.Process.killProcess(android.os.Process.myPid())
             kotlin.system.exitProcess(10)
         }
