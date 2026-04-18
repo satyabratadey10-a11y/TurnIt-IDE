@@ -37,6 +37,11 @@ class MainActivity : FragmentActivity() {
     private val authManager by lazy { FirebaseAuthManager() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+            val crashFile = java.io.File(getExternalFilesDir(null), "crash_log.txt")
+            crashFile.writeText(android.util.Log.getStackTraceString(e))
+            kotlin.system.exitProcess(1)
+        }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
