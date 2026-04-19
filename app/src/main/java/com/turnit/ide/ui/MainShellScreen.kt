@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -54,7 +53,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -105,10 +103,9 @@ fun MainShellScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val scaffoldState = rememberBottomSheetScaffoldState()
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var leftPaneWeight by remember { mutableFloatStateOf(0.5f) }
+    var chatPaneWeight by remember { mutableFloatStateOf(0.35f) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -293,117 +290,103 @@ fun MainShellScreen(
             }
         }
     ) {
-        BottomSheetScaffold(
-            scaffoldState = scaffoldState,
-            containerColor = IdeColors.Bg,
-            sheetContainerColor = IdeColors.BgSurface,
-            sheetPeekHeight = 56.dp,
-            topBar = {
-                val rainbowShift = rememberInfiniteTransition(label = "brand_shift")
-                val shift by rainbowShift.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 1000f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(4000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "brand_shift_anim"
-                )
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "TurnIt",
-                            style = TextStyle(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFFFF3B3B),
-                                        Color(0xFF3BFF4F),
-                                        Color(0xFF3B82FF),
-                                        Color(0xFFFF3B3B)
-                                    ),
-                                    start = Offset(shift - 300f, 0f),
-                                    end = Offset(shift + 300f, 0f)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(IdeColors.Bg)
+        ) {
+            val rainbowShift = rememberInfiniteTransition(label = "brand_shift")
+            val shift by rainbowShift.animateFloat(
+                initialValue = 0f,
+                targetValue = 1000f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(4000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "brand_shift_anim"
+            )
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "TurnIt",
+                        style = TextStyle(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFFF3B3B),
+                                    Color(0xFF3BFF4F),
+                                    Color(0xFF3B82FF),
+                                    Color(0xFFFF3B3B)
                                 ),
-                                fontSize = 18.sp,
-                                fontFamily = FontFamily.Monospace,
-                                letterSpacing = 1.sp
-                            )
+                                start = Offset(shift - 300f, 0f),
+                                end = Offset(shift + 300f, 0f)
+                            ),
+                            fontSize = 18.sp,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.sp
                         )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                imageVector = Icons.Filled.Menu,
-                                contentDescription = "Menu",
-                                tint = IdeColors.TextSecondary
-                            )
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = {
-                            if (isRunning || isBuildRunning) handleStopClick() else handleRunClick()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = "Play",
-                                tint = if (isRunning || isBuildRunning) IdeColors.AccentOrange else IdeColors.AccentGreen
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = IdeColors.BgSurface
                     )
-                )
-            },
-            sheetContent = {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(360.dp)
-                        .background(IdeColors.BgSurface)
-                ) {
-                    if (maxWidth < 900.dp) {
-                        ChatPane(
-                            selectedModel = selectedModel,
-                            modelOptions = modelOptions,
-                            onModelSelected = { model ->
-                                if (model == addCustomModelOption) {
-                                    clearCustomModelInputs()
-                                    showCustomModelDialog = true
-                                } else {
-                                    selectedModel = model
-                                }
-                            },
-                            messages = chatMessages,
-                            input = chatInput,
-                            onInputChange = { chatInput = it },
-                            onSend = sendChatPrompt
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(IdeColors.BgSurface)
+                },
+                navigationIcon = {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(
+                            imageVector = Icons.Filled.Menu,
+                            contentDescription = "Menu",
+                            tint = IdeColors.TextSecondary
                         )
                     }
-                }
-            }
-        ) { pad ->
+                },
+                actions = {
+                    IconButton(onClick = {
+                        if (isRunning || isBuildRunning) handleStopClick() else handleRunClick()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "Play",
+                            tint = if (isRunning || isBuildRunning) IdeColors.AccentOrange else IdeColors.AccentGreen
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = IdeColors.BgSurface
+                )
+            )
+
             BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(pad)
+                modifier = Modifier.fillMaxSize()
             ) {
                 val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-                val useBottomSheetForChat = maxWidth < 900.dp
-                val dividerX = maxWidth * leftPaneWeight
+                val dividerX = maxWidth * chatPaneWeight
                 val handleOffsetX = dividerX - 12.dp
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         Box(
                             modifier = Modifier
-                                .weight(leftPaneWeight)
+                                .weight(chatPaneWeight)
+                                .fillMaxHeight()
+                                .background(IdeColors.BgSurface)
+                        ) {
+                            ChatPane(
+                                selectedModel = selectedModel,
+                                modelOptions = modelOptions,
+                                onModelSelected = { model ->
+                                    if (model == addCustomModelOption) {
+                                        clearCustomModelInputs()
+                                        showCustomModelDialog = true
+                                    } else {
+                                        selectedModel = model
+                                    }
+                                },
+                                messages = chatMessages,
+                                input = chatInput,
+                                onInputChange = { chatInput = it },
+                                onSend = sendChatPrompt
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f - chatPaneWeight)
                                 .fillMaxHeight()
                                 .background(IdeColors.Bg)
                         ) {
@@ -422,44 +405,6 @@ fun MainShellScreen(
                                 }
                             }
                         }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f - leftPaneWeight)
-                                .fillMaxHeight()
-                                .background(IdeColors.BgSurface)
-                        ) {
-                            if (useBottomSheetForChat) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "AI Chat is in bottom sheet",
-                                        color = IdeColors.TextMuted,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            } else {
-                                ChatPane(
-                                    selectedModel = selectedModel,
-                                    modelOptions = modelOptions,
-                                    onModelSelected = { model ->
-                                        if (model == addCustomModelOption) {
-                                            clearCustomModelInputs()
-                                            showCustomModelDialog = true
-                                        } else {
-                                            selectedModel = model
-                                        }
-                                    },
-                                    messages = chatMessages,
-                                    input = chatInput,
-                                    onInputChange = { chatInput = it },
-                                    onSend = sendChatPrompt
-                                )
-                            }
-                        }
                     }
 
                     Box(
@@ -472,8 +417,8 @@ fun MainShellScreen(
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     val deltaWeight = dragAmount / totalWidthInPx
-                                    leftPaneWeight =
-                                        (leftPaneWeight + deltaWeight).coerceIn(0.2f, 0.8f)
+                                    chatPaneWeight =
+                                        (chatPaneWeight + deltaWeight).coerceIn(0.25f, 0.6f)
                                 }
                             }
                     )
