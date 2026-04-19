@@ -61,6 +61,7 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -100,6 +101,7 @@ import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
+import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -140,30 +142,74 @@ fun MainShellScreen(
     var terminalInput by remember { mutableStateOf("") }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
+    var hasShellStarted by remember { mutableStateOf(false) }
+    var isShellReady by remember { mutableStateOf(false) }
+    var isExtractingRootfs by remember { mutableStateOf(false) }
 
     val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
-
-    val runCommand: (String) -> Unit = run@{ command ->
-        if (command.isBlank()) {
-            return@run
-        }
-        if (!isRunning) {
+    val startShellSession = {
+        if (isShellReady && !isRunning && !hasShellStarted) {
+            hasShellStarted = true
             isRunning = true
-            activePane = IdePane.TERMINAL
-            consoleLogs.add("\n$ $command\n")
             onRunBuild()
             activeJob = scope.launch {
                 try {
-                    shellEngine.execute(command).collect { outputLine ->
+                    shellEngine.startInteractiveShell().collect { outputLine ->
                         consoleLogs.add(outputLine)
                     }
                 } finally {
                     isRunning = false
+                    hasShellStarted = false
                     onStopBuild()
                 }
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val rootfsDir = File(context.filesDir, "rootfs")
+        val prootBin = File(context.filesDir, "proot")
+        val shouldExtract = !rootfsDir.exists() || !prootBin.exists() || !prootBin.canExecute()
+
+        if (shouldExtract) {
+            activePane = IdePane.TERMINAL
+            isExtractingRootfs = true
+            consoleLogs.add("Extracting Ubuntu RootFS... Please wait.\n")
+            val extracted = withContext(Dispatchers.IO) {
+                ExtractionEngine(context).bootstrapEnvironment(context)
+            }
+            isExtractingRootfs = false
+            if (extracted && rootfsDir.exists() && prootBin.exists() && prootBin.canExecute()) {
+                consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
+                isShellReady = true
+            } else {
+                consoleLogs.add("FATAL: RootFS extraction failed.\n")
+            }
         } else {
-            consoleLogs.add("\n[Process already running. Stop it before launching another command.]\n")
+            isShellReady = true
+        }
+    }
+
+    LaunchedEffect(isShellReady) {
+        startShellSession()
+    }
+
+    val runCommand: (String) -> Unit = run@{ command ->
+        val trimmed = command.trim()
+        if (trimmed.isBlank()) return@run
+        activePane = IdePane.TERMINAL
+        if (!isShellReady || isExtractingRootfs) {
+            consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
+            return@run
+        }
+        if (!isRunning) {
+            startShellSession()
+            consoleLogs.add("[PRoot shell is starting, please retry command]\n")
+            return@run
+        }
+        consoleLogs.add("\n$ $trimmed\n")
+        if (!shellEngine.sendInput(trimmed)) {
+            consoleLogs.add("[Failed to send input to PRoot shell]\n")
         }
     }
     val handleRunClick = { runCommand(testCompileCommand) }
@@ -177,9 +223,11 @@ fun MainShellScreen(
 
     val handleStopClick = {
         if (isRunning) {
+            shellEngine.stopInteractiveShell()
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
             isRunning = false
+            hasShellStarted = false
             onStopBuild()
         }
     }
@@ -666,10 +714,7 @@ private fun ChatPane(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (message.role == "user") Color(0x33FFFFFF)
-                                else Color(0x22161B22)
-                            )
+                            .background(Color.White.copy(alpha = 0.1f))
                             .border(
                                 1.dp,
                                 Color.White.copy(alpha = 0.18f),
@@ -757,7 +802,7 @@ private fun TerminalConsoleView(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
+            TextField(
                 value = input,
                 onValueChange = onInputChange,
                 label = { Text("Command") },
