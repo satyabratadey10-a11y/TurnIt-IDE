@@ -54,6 +54,7 @@ class ShellEngine(private val context: Context) {
         val env = pb.environment()
         if (useNativeShellFallback) {
             pb.directory(context.filesDir)
+            env.clear()
             env["HOME"] = context.filesDir.absolutePath
             env["PWD"] = context.filesDir.absolutePath
             env["TERM"] = "xterm-256color"

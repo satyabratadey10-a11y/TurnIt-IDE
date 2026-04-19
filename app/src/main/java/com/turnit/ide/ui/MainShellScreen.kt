@@ -180,6 +180,7 @@ fun MainShellScreen(
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
             isRunning = false
+            onStopBuild()
         }
     }
 
