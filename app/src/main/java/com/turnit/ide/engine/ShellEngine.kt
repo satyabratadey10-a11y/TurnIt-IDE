@@ -22,7 +22,7 @@ class ShellEngine(private val context: Context) {
     fun execute(command: String): Flow<String> = flow {
         val useNativeShellFallback = !rootfsDir.exists()
         val cmdArgs = if (useNativeShellFallback) {
-            emit("[rootfs missing. Falling back to native shell in ${context.filesDir.absolutePath}]\n")
+            emit("[Rootfs missing. Falling back to native shell in ${context.filesDir.absolutePath}]\n")
             listOf("/system/bin/sh", "-c", command)
         } else {
             if (!prootBin.exists() || !prootBin.canExecute()) {

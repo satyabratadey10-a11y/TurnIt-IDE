@@ -179,6 +179,7 @@ fun MainShellScreen(
         if (isRunning) {
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
+            isRunning = false
         }
     }
 
@@ -925,7 +926,7 @@ private fun FileTreePane(filesDir: File) {
             } else {
                 items(entries) { entry ->
                     Text(
-                        text = "${FILE_TREE_INDENT.repeat(entry.depth)}${if (entry.file.isDirectory) FILE_TREE_DIR_ICON else FILE_TREE_FILE_ICON} ${entry.file.name}",
+                        text = entry.renderLabel,
                         color = IdeColors.TextSecondary,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp
@@ -936,7 +937,11 @@ private fun FileTreePane(filesDir: File) {
     }
 }
 
-private data class FileTreeEntry(val file: File, val depth: Int)
+private data class FileTreeEntry(
+    val file: File,
+    val depth: Int,
+    val renderLabel: String
+)
 
 private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
     val items = mutableListOf<FileTreeEntry>()
@@ -945,7 +950,13 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
             ?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
             .orEmpty()
         children.forEach { child ->
-            items.add(FileTreeEntry(file = child, depth = depth))
+            items.add(
+                FileTreeEntry(
+                    file = child,
+                    depth = depth,
+                    renderLabel = "${FILE_TREE_INDENT.repeat(depth)}${if (child.isDirectory) FILE_TREE_DIR_ICON else FILE_TREE_FILE_ICON} ${child.name}"
+                )
+            )
             if (child.isDirectory) {
                 visit(child, depth + 1)
             }
@@ -999,7 +1010,9 @@ private fun NeonChatInputEditText(
                     }
                 })
                 setOnEditorActionListener { _, actionId, event ->
-                    val isEnter = event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN
+                    val isEnter = event?.let {
+                        it.keyCode == KeyEvent.KEYCODE_ENTER && it.action == KeyEvent.ACTION_DOWN
+                    } == true
                     if (actionId == EditorInfo.IME_ACTION_SEND || isEnter) {
                         onSend()
                         true
