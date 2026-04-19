@@ -92,6 +92,9 @@ enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
+private const val DEFAULT_CHAT_PANE_WEIGHT = 0.35f
+private const val MIN_CHAT_PANE_WEIGHT = 0.25f
+private const val MAX_CHAT_PANE_WEIGHT = 0.6f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +108,7 @@ fun MainShellScreen(
     val context = LocalContext.current
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var chatPaneWeight by remember { mutableFloatStateOf(0.35f) }
+    var chatPaneWeight by remember { mutableFloatStateOf(DEFAULT_CHAT_PANE_WEIGHT) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -355,6 +358,7 @@ fun MainShellScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                val idePaneWeight = 1f - chatPaneWeight
                 val dividerX = maxWidth * chatPaneWeight
                 val handleOffsetX = dividerX - 12.dp
 
@@ -386,7 +390,7 @@ fun MainShellScreen(
 
                         Box(
                             modifier = Modifier
-                                .weight(1f - chatPaneWeight)
+                                .weight(idePaneWeight)
                                 .fillMaxHeight()
                                 .background(IdeColors.Bg)
                         ) {
@@ -418,7 +422,10 @@ fun MainShellScreen(
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     val deltaWeight = dragAmount / totalWidthInPx
                                     chatPaneWeight =
-                                        (chatPaneWeight + deltaWeight).coerceIn(0.25f, 0.6f)
+                                        (chatPaneWeight + deltaWeight).coerceIn(
+                                            MIN_CHAT_PANE_WEIGHT,
+                                            MAX_CHAT_PANE_WEIGHT
+                                        )
                                 }
                             }
                     )
