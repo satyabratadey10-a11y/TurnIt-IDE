@@ -1,0 +1,50 @@
+name: Build Complete Toolchain Artifact
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install 7-Zip
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+
+      - name: Prepare Staging Directory
+        run: mkdir -p toolchain/opt
+
+      - name: Copy JDK
+        run: cp -r $JAVA_HOME toolchain/opt/jdk
+
+      - name: Copy Android SDK & NDK
+        run: |
+          mkdir -p toolchain/opt/android-sdk
+          cp -r $ANDROID_HOME/cmdline-tools toolchain/opt/android-sdk/
+          cp -r $ANDROID_HOME/build-tools toolchain/opt/android-sdk/
+          cp -r $ANDROID_HOME/platforms toolchain/opt/android-sdk/
+          cp -r $ANDROID_HOME/ndk toolchain/opt/android-sdk/
+          cp -r $ANDROID_HOME/cmake toolchain/opt/android-sdk/
+
+      - name: Download & Extract Gradle
+        run: |
+          wget https://services.gradle.org/distributions/gradle-8.6-bin.zip
+          unzip gradle-8.6-bin.zip -d toolchain/opt/
+          mv toolchain/opt/gradle-8.6 toolchain/opt/gradle
+          rm gradle-8.6-bin.zip
+
+      - name: Prune Non-ARM/Bloat Files
+        run: |
+          echo "Removing x86, windows, and darwin binaries to save space..."
+          find toolchain/opt/android-sdk -type d -name "*x86*" -exec rm -rf {} + || true
+          find toolchain/opt/android-sdk -type d -name "*windows*" -exec rm -rf {} + || true
+          find toolchain/opt/android-sdk -type d -name "*darwin*" -exec rm -rf {} + || true
+
+      - name: Compress to 7z (Ultra Compression)
+        run: 7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on toolchain-package.7z toolchain/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-android-toolchain
+          path: toolchain-package.7z
+          compression-level: 0 # It is already highly compressed by 7z
