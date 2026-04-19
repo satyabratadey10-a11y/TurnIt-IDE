@@ -5,21 +5,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import java.io.BufferedWriter
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 
 class ShellEngine(private val context: Context) {
 
     private val rootfsDir = File(context.filesDir, "rootfs")
-    
-    // We will inject the static PRoot binary here in the next step
     private val prootBin = File(context.filesDir, "proot")
+    private val processLock = Any()
+    @Volatile private var runningProcess: Process? = null
+    @Volatile private var runningWriter: BufferedWriter? = null
 
     /**
-     * Executes a bash command inside the PRoot Ubuntu environment and streams the output.
+     * Starts an interactive bash shell inside PRoot and streams output until the shell exits.
      */
-    fun execute(command: String): Flow<String> = flow {
+    fun startInteractiveShell(): Flow<String> = flow {
         if (!rootfsDir.exists()) {
             emit("FATAL: Rootfs not found at ${rootfsDir.absolutePath}\n")
             return@flow
@@ -43,13 +46,12 @@ class ShellEngine(private val context: Context) {
             "-b", "/sys",
             "-w", "/root",
             "/bin/bash",
-            "-c",
-            command
+            "--login"
         )
 
         val pb = ProcessBuilder(cmdArgs)
         pb.redirectErrorStream(true) // Merge stderr into stdout
-        
+
         val env = pb.environment()
         env.clear()
         env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -60,18 +62,51 @@ class ShellEngine(private val context: Context) {
 
         try {
             val process = pb.start()
+            val writer = BufferedWriter(OutputStreamWriter(process.outputStream))
+            synchronized(processLock) {
+                runningProcess = process
+                runningWriter = writer
+            }
+            emit("[PRoot shell started]\n")
+
             val reader = BufferedReader(InputStreamReader(process.inputStream))
-            
             var line: String?
             while (reader.readLine().also { line = it } != null) {
                 emit(line + "\n")
             }
-            
+
             val exitCode = process.waitFor()
             emit("\n[Process terminated with code $exitCode]\n")
-            
         } catch (e: Exception) {
             emit("\n[ShellEngine Exception: ${e.stackTraceToString()}]\n")
+        } finally {
+            synchronized(processLock) {
+                runningWriter?.runCatching { close() }
+                runningWriter = null
+                runningProcess?.runCatching { destroy() }
+                runningProcess = null
+            }
         }
     }.flowOn(Dispatchers.IO)
+
+    fun sendInput(command: String): Boolean = synchronized(processLock) {
+        val writer = runningWriter ?: return false
+        return try {
+            writer.write(command)
+            writer.newLine()
+            writer.flush()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun stopInteractiveShell() {
+        synchronized(processLock) {
+            runningWriter?.runCatching { close() }
+            runningWriter = null
+            runningProcess?.runCatching { destroy() }
+            runningProcess = null
+        }
+    }
 }

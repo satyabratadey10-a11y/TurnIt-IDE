@@ -1,6 +1,16 @@
 package com.turnit.ide.ui
 
+import android.animation.ValueAnimator
 import android.net.Uri
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.KeyEvent
+import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.FrameLayout
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -51,49 +61,61 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
+import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
+private const val FILE_TREE_INDENT = "  "
+private const val FILE_TREE_DIR_ICON = "📁"
+private const val FILE_TREE_FILE_ICON = "📄"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,31 +139,95 @@ fun MainShellScreen(
             "Waiting for command...\n"
         )
     }
+    var terminalInput by remember { mutableStateOf("") }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
+    var hasShellStarted by remember { mutableStateOf(false) }
+    var isShellReady by remember { mutableStateOf(false) }
+    var isExtractingRootfs by remember { mutableStateOf(false) }
 
     val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
-
-    val handleRunClick = {
-        if (!isRunning) {
+    val startShellSession = {
+        if (isShellReady && !isRunning && !hasShellStarted) {
+            hasShellStarted = true
             isRunning = true
-            activePane = IdePane.TERMINAL
-            consoleLogs.add("\n$ root $testCompileCommand\n")
             onRunBuild()
             activeJob = scope.launch {
-                shellEngine.execute(testCompileCommand).collect { outputLine ->
-                    consoleLogs.add(outputLine)
+                try {
+                    shellEngine.startInteractiveShell().collect { outputLine ->
+                        consoleLogs.add(outputLine)
+                    }
+                } finally {
+                    isRunning = false
+                    hasShellStarted = false
+                    onStopBuild()
                 }
-                isRunning = false
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val rootfsDir = File(context.filesDir, "rootfs")
+        val prootBin = File(context.filesDir, "proot")
+        val shouldExtract = !rootfsDir.exists() || !prootBin.exists() || !prootBin.canExecute()
+
+        if (shouldExtract) {
+            activePane = IdePane.TERMINAL
+            isExtractingRootfs = true
+            consoleLogs.add("Extracting Ubuntu RootFS... Please wait.\n")
+            val extracted = withContext(Dispatchers.IO) {
+                ExtractionEngine(context).bootstrapEnvironment(context)
+            }
+            isExtractingRootfs = false
+            if (extracted && rootfsDir.exists() && prootBin.exists() && prootBin.canExecute()) {
+                consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
+                isShellReady = true
+            } else {
+                consoleLogs.add("FATAL: RootFS extraction failed.\n")
+            }
+        } else {
+            isShellReady = true
+        }
+    }
+
+    LaunchedEffect(isShellReady) {
+        startShellSession()
+    }
+
+    val runCommand: (String) -> Unit = run@{ command ->
+        val trimmed = command.trim()
+        if (trimmed.isBlank()) return@run
+        activePane = IdePane.TERMINAL
+        if (!isShellReady || isExtractingRootfs) {
+            consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
+            return@run
+        }
+        if (!isRunning) {
+            startShellSession()
+            consoleLogs.add("[PRoot shell is starting, please retry command]\n")
+            return@run
+        }
+        consoleLogs.add("\n$ $trimmed\n")
+        if (!shellEngine.sendInput(trimmed)) {
+            consoleLogs.add("[Failed to send input to PRoot shell]\n")
+        }
+    }
+    val handleRunClick = { runCommand(testCompileCommand) }
+    val handleTerminalSubmit = {
+        val command = terminalInput.trim()
+        if (command.isNotBlank()) {
+            terminalInput = ""
+            runCommand(command)
         }
     }
 
     val handleStopClick = {
         if (isRunning) {
+            shellEngine.stopInteractiveShell()
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
             isRunning = false
+            hasShellStarted = false
             onStopBuild()
         }
     }
@@ -415,9 +501,14 @@ fun MainShellScreen(
                                 HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
                                 Box(modifier = Modifier.fillMaxSize()) {
                                     when (activePane) {
-                                        IdePane.TERMINAL -> TerminalConsoleView(consoleLogs)
+                                        IdePane.TERMINAL -> TerminalConsoleView(
+                                            logs = consoleLogs,
+                                            input = terminalInput,
+                                            onInputChange = { terminalInput = it },
+                                            onSubmit = handleTerminalSubmit
+                                        )
                                         IdePane.EDITOR -> CodeEditorView()
-                                        IdePane.FILE_TREE -> FileTreePanePlaceholder()
+                                        IdePane.FILE_TREE -> FileTreePane(filesDir = context.filesDir)
                                     }
                                 }
                             }
@@ -623,10 +714,7 @@ private fun ChatPane(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (message.role == "user") Color(0x33FFFFFF)
-                                else Color(0x22161B22)
-                            )
+                            .background(Color.White.copy(alpha = 0.1f))
                             .border(
                                 1.dp,
                                 Color.White.copy(alpha = 0.18f),
@@ -646,67 +734,23 @@ private fun ChatPane(
 
         Spacer(Modifier.height(10.dp))
 
-        val borderSpin = rememberInfiniteTransition(label = "neon_border")
-        val angle by borderSpin.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2200, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "neon_border_angle"
-        )
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .drawWithCache {
-                    val brush = Brush.sweepGradient(
-                        listOf(
-                            Color(0xFFFF3B3B),
-                            Color(0xFF3BFF4F),
-                            Color(0xFF3B82FF),
-                            Color(0xFFFF3B3B)
-                        )
-                    )
-                    onDrawWithContent {
-                        drawContent()
-                        rotate(angle) {
-                            drawRoundRect(
-                                brush = brush,
-                                cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx()),
-                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                            )
-                        }
-                    }
-                }
                 .clip(RoundedCornerShape(12.dp))
                 .background(IdeColors.Bg)
-                .padding(2.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(IdeColors.Bg)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 2.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                BasicTextField(
+                NeonChatInputEditText(
                     value = input,
                     onValueChange = onInputChange,
-                    textStyle = TextStyle(color = IdeColors.TextPrimary, fontSize = 13.sp),
                     modifier = Modifier.weight(1f),
-                    decorationBox = { inner ->
-                        if (input.isEmpty()) {
-                            Text(
-                                CHAT_PLACEHOLDER_TEXT,
-                                color = IdeColors.TextMuted,
-                                fontSize = 13.sp
-                            )
-                        }
-                        inner()
-                    }
+                    onSend = onSend
                 )
                 Spacer(Modifier.width(8.dp))
                 IconButton(onClick = onSend) {
@@ -722,7 +766,12 @@ private fun ChatPane(
 }
 
 @Composable
-private fun TerminalConsoleView(logs: List<String>) {
+private fun TerminalConsoleView(
+    logs: List<String>,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
     val listState = rememberLazyListState()
 
     LaunchedEffect(logs.size) {
@@ -731,21 +780,52 @@ private fun TerminalConsoleView(logs: List<String>) {
         }
     }
 
-    LazyColumn(
-        state = listState,
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(IdeColors.Bg)
             .padding(8.dp)
     ) {
-        items(logs) { line ->
-            Text(
-                text = line,
-                color = IdeColors.TextSecondary,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = 14.sp
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f)
+        ) {
+            items(logs) { line ->
+                Text(
+                    text = line,
+                    color = IdeColors.TextSecondary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 14.sp
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextField(
+                value = input,
+                onValueChange = onInputChange,
+                label = { Text("Command") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Send
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSend = { onSubmit() }
+                ),
+                modifier = Modifier.weight(1f)
             )
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onSubmit) {
+                Icon(
+                    imageVector = Icons.Filled.Terminal,
+                    contentDescription = "Run command",
+                    tint = IdeColors.AccentGreen
+                )
+            }
         }
     }
 }
@@ -857,8 +937,174 @@ private fun PaneTab(
 }
 
 @Composable
-private fun FileTreePanePlaceholder() =
-    PlaceholderPane("[files] Phase 4: FileTreePanel", IdeColors.AccentPurple)
+private fun FileTreePane(filesDir: File) {
+    val entries by produceState(initialValue = emptyList<FileTreeEntry>(), key1 = filesDir.absolutePath) {
+        value = withContext(Dispatchers.IO) {
+            buildFileTreeEntries(filesDir)
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IdeColors.Bg)
+            .padding(8.dp)
+    ) {
+        Text(
+            text = filesDir.absolutePath,
+            color = IdeColors.TextMuted,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (entries.isEmpty()) {
+                item {
+                    Text(
+                        text = "(empty)",
+                        color = IdeColors.TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp
+                    )
+                }
+            } else {
+                items(entries) { entry ->
+                    Text(
+                        text = entry.renderLabel,
+                        color = IdeColors.TextSecondary,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class FileTreeEntry(
+    val file: File,
+    val depth: Int,
+    val renderLabel: String
+)
+
+private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
+    val items = mutableListOf<FileTreeEntry>()
+    fun visit(node: File, depth: Int) {
+        val children = node.listFiles()
+            ?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
+            .orEmpty()
+        children.forEach { child ->
+            items.add(
+                FileTreeEntry(
+                    file = child,
+                    depth = depth,
+                    renderLabel = "${FILE_TREE_INDENT.repeat(depth)}${if (child.isDirectory) FILE_TREE_DIR_ICON else FILE_TREE_FILE_ICON} ${child.name}"
+                )
+            )
+            if (child.isDirectory) {
+                visit(child, depth + 1)
+            }
+        }
+    }
+    visit(root, 0)
+    return items
+}
+
+@Composable
+private fun NeonChatInputEditText(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onSend: () -> Unit
+) {
+    var rotatingBorder by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            val borderDrawable = AppCompatResources.getDrawable(ctx, R.drawable.bg_neon_input_rotate)
+            rotatingBorder = borderDrawable
+            val container = FrameLayout(ctx).apply {
+                background = borderDrawable
+                val paddingPx = (3 * resources.displayMetrics.density).toInt()
+                setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val editText = EditText(ctx).apply {
+                setTextColor(IdeColors.TextPrimary.toArgb())
+                setHintTextColor(IdeColors.TextMuted.toArgb())
+                hint = CHAT_PLACEHOLDER_TEXT
+                setSingleLine(true)
+                imeOptions = EditorInfo.IME_ACTION_SEND
+                setBackgroundColor(IdeColors.Bg.toArgb())
+                setPadding(
+                    (12 * resources.displayMetrics.density).toInt(),
+                    (10 * resources.displayMetrics.density).toInt(),
+                    (12 * resources.displayMetrics.density).toInt(),
+                    (10 * resources.displayMetrics.density).toInt()
+                )
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                    override fun afterTextChanged(s: Editable?) {
+                        onValueChange(s?.toString().orEmpty())
+                    }
+                })
+                setOnEditorActionListener { _, actionId, event ->
+                    val isEnter = event?.let {
+                        it.keyCode == KeyEvent.KEYCODE_ENTER && it.action == KeyEvent.ACTION_DOWN
+                    } == true
+                    if (actionId == EditorInfo.IME_ACTION_SEND || isEnter) {
+                        onSend()
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+            container.addView(
+                editText,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            container
+        },
+        update = { container ->
+            val editText = container.getChildAt(0) as EditText
+            if (editText.text.toString() != value) {
+                editText.setText(value)
+                editText.setSelection(value.length)
+            }
+        }
+    )
+
+    DisposableEffect(rotatingBorder) {
+        val rotateDrawable = rotatingBorder as? android.graphics.drawable.RotateDrawable
+        if (rotateDrawable == null) {
+            onDispose { }
+        } else {
+            val animator = ValueAnimator.ofInt(0, 10000).apply {
+                duration = 2200L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    rotateDrawable.level = it.animatedValue as Int
+                }
+                start()
+            }
+            onDispose {
+                animator.cancel()
+            }
+        }
+    }
+}
 
 @Composable
 private fun PlaceholderPane(label: String, accent: Color) {
