@@ -66,7 +66,7 @@ private fun MainAppContent() {
     val context = LocalContext.current
     var bootState by remember { mutableStateOf("BOOTING") } // BOOTING, AUTH, BIOMETRIC, EXTRACTION, READY, ERROR
     var crashLog by remember { mutableStateOf<String?>(null) }
-    var authManager by remember { mutableStateOf<FirebaseAuthManager?>(null) }
+    var authManagerInstance by remember { mutableStateOf<FirebaseAuthManager?>(null) }
     var isBuildRunning by remember { mutableStateOf(false) }
     var bootRetryToken by remember { mutableStateOf(0) }
     var biometricError by remember { mutableStateOf<String?>(null) }
@@ -78,7 +78,7 @@ private fun MainAppContent() {
         biometricError = null
         runCatching {
             val manager = withContext(Dispatchers.IO) { FirebaseAuthManager() }
-            authManager = manager
+            authManagerInstance = manager
             val hasUser = withContext(Dispatchers.IO) { manager.isAuthenticated() }
             bootState = if (hasUser) "BIOMETRIC" else "AUTH"
         }.onFailure { throwable ->
@@ -142,9 +142,27 @@ private fun MainAppContent() {
         }
 
         "AUTH" -> {
-            val manager = authManager
+            val manager = authManagerInstance
             if (manager == null) {
-                bootState = "BOOTING"
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(IdeColors.Bg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Authentication is still initializing.")
+                        Button(onClick = {
+                            bootState = "BOOTING"
+                            bootRetryToken++
+                        }) {
+                            Text("Retry startup")
+                        }
+                    }
+                }
             } else {
                 AuthScreen(
                     authManager = manager,
