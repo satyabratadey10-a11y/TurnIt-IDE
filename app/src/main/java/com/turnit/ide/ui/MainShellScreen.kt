@@ -73,6 +73,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -100,14 +101,19 @@ import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
 import com.turnit.ide.engine.ShellEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
+private const val FILE_TREE_INDENT = "  "
+private const val FILE_TREE_DIR_ICON = "📁"
+private const val FILE_TREE_FILE_ICON = "📄"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -147,11 +153,14 @@ fun MainShellScreen(
             consoleLogs.add("\n$ $command\n")
             onRunBuild()
             activeJob = scope.launch {
-                shellEngine.execute(command).collect { outputLine ->
-                    consoleLogs.add(outputLine)
+                try {
+                    shellEngine.execute(command).collect { outputLine ->
+                        consoleLogs.add(outputLine)
+                    }
+                } finally {
+                    isRunning = false
+                    onStopBuild()
                 }
-                isRunning = false
-                onStopBuild()
             }
         } else {
             consoleLogs.add("\n[Process already running. Stop it before launching another command.]\n")
@@ -170,8 +179,6 @@ fun MainShellScreen(
         if (isRunning) {
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
-            isRunning = false
-            onStopBuild()
         }
     }
 
@@ -884,7 +891,11 @@ private fun PaneTab(
 
 @Composable
 private fun FileTreePane(filesDir: File) {
-    val entries = remember(filesDir.absolutePath) { buildFileTreeEntries(filesDir) }
+    val entries by produceState(initialValue = emptyList<FileTreeEntry>(), key1 = filesDir.absolutePath) {
+        value = withContext(Dispatchers.IO) {
+            buildFileTreeEntries(filesDir)
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -914,7 +925,7 @@ private fun FileTreePane(filesDir: File) {
             } else {
                 items(entries) { entry ->
                     Text(
-                        text = "${"  ".repeat(entry.depth)}${if (entry.file.isDirectory) "📁" else "📄"} ${entry.file.name}",
+                        text = "${FILE_TREE_INDENT.repeat(entry.depth)}${if (entry.file.isDirectory) FILE_TREE_DIR_ICON else FILE_TREE_FILE_ICON} ${entry.file.name}",
                         color = IdeColors.TextSecondary,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp
