@@ -77,7 +77,7 @@ private fun MainAppContent() {
         crashLog = null
         biometricError = null
         runCatching {
-            val manager = withContext(Dispatchers.IO) { FirebaseAuthManager() }
+            val manager = authManagerInstance ?: withContext(Dispatchers.IO) { FirebaseAuthManager() }
             authManagerInstance = manager
             val hasUser = withContext(Dispatchers.IO) { manager.isAuthenticated() }
             bootState = if (hasUser) "BIOMETRIC" else "AUTH"
@@ -118,7 +118,7 @@ private fun MainAppContent() {
         if (bootstrapSucceeded) {
             bootState = "READY"
         } else {
-            crashLog = "Failed to bootstrap terminal environment."
+            crashLog = "Terminal bootstrap failed during initialization."
             bootState = "ERROR"
         }
     }
@@ -154,7 +154,7 @@ private fun MainAppContent() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Authentication is still initializing.")
+                        Text("Authentication initialization is in progress. Retry if this persists.")
                         Button(onClick = {
                             bootState = "BOOTING"
                             bootRetryToken++
@@ -233,7 +233,10 @@ private fun MainAppContent() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(crashLog ?: "Unexpected startup failure.", modifier = Modifier.padding(horizontal = 16.dp))
+                    Text(
+                        crashLog ?: "An error occurred during app initialization. Please restart the app.",
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                     Button(onClick = {
                         bootState = "BOOTING"
                         bootRetryToken++
