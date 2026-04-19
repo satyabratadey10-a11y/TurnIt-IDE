@@ -20,43 +20,51 @@ class ShellEngine(private val context: Context) {
      * Executes a bash command inside the PRoot Ubuntu environment and streams the output.
      */
     fun execute(command: String): Flow<String> = flow {
-        if (!rootfsDir.exists()) {
-            emit("FATAL: Rootfs not found at ${rootfsDir.absolutePath}\n")
-            return@flow
+        val useNativeShellFallback = !rootfsDir.exists()
+        val cmdArgs = if (useNativeShellFallback) {
+            emit("[rootfs missing. Falling back to native shell in ${context.filesDir.absolutePath}]\n")
+            listOf("/system/bin/sh", "-c", command)
+        } else {
+            if (!prootBin.exists() || !prootBin.canExecute()) {
+                emit("FATAL: PRoot engine missing or not executable.\n")
+                return@flow
+            }
+            // -0: Fake root privileges
+            // -r: Target root filesystem
+            // -w: Working directory inside rootfs
+            // -b: Bind essential Android system directories
+            listOf(
+                prootBin.absolutePath,
+                "--link2symlink",
+                "-0",
+                "-r", rootfsDir.absolutePath,
+                "-b", "/dev",
+                "-b", "/proc",
+                "-b", "/sys",
+                "-w", "/root",
+                "/bin/bash",
+                "-c",
+                command
+            )
         }
-        if (!prootBin.exists() || !prootBin.canExecute()) {
-            emit("FATAL: PRoot engine missing or not executable.\n")
-            return@flow
-        }
-
-        // -0: Fake root privileges
-        // -r: Target root filesystem
-        // -w: Working directory inside rootfs
-        // -b: Bind essential Android system directories
-        val cmdArgs = listOf(
-            prootBin.absolutePath,
-            "--link2symlink",
-            "-0",
-            "-r", rootfsDir.absolutePath,
-            "-b", "/dev",
-            "-b", "/proc",
-            "-b", "/sys",
-            "-w", "/root",
-            "/bin/bash",
-            "-c",
-            command
-        )
 
         val pb = ProcessBuilder(cmdArgs)
         pb.redirectErrorStream(true) // Merge stderr into stdout
-        
+
         val env = pb.environment()
-        env.clear()
-        env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        env["HOME"] = "/root"
-        env["USER"] = "root"
-        env["PROOT_NO_SECCOMP"] = "1" // Prevents Android seccomp-bpf crashes
-        env["TERM"] = "xterm-256color"
+        if (useNativeShellFallback) {
+            pb.directory(context.filesDir)
+            env["HOME"] = context.filesDir.absolutePath
+            env["PWD"] = context.filesDir.absolutePath
+            env["TERM"] = "xterm-256color"
+        } else {
+            env.clear()
+            env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            env["HOME"] = "/root"
+            env["USER"] = "root"
+            env["PROOT_NO_SECCOMP"] = "1" // Prevents Android seccomp-bpf crashes
+            env["TERM"] = "xterm-256color"
+        }
 
         try {
             val process = pb.start()
