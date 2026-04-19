@@ -35,11 +35,14 @@ import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.TurnItIdeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
 
 private const val PAYLOAD_URL =
     "https://github.com/satyabratadey10-a11y/TurnIt-IDE/releases/download/v1.0-toolchain/toolchain-arm64.7z"
 private const val PAYLOAD_SHA256 =
     "c62a9278d51a9f7112d9da80b29ab28d97b8dc00c11b98aece152923c677837c"
+private const val PAYLOAD_FILENAME = "toolchain.7z"
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,7 +81,8 @@ private fun MainAppContent() {
     var bootRetryToken by remember { mutableStateOf(0) }
     var biometricError by remember { mutableStateOf<String?>(null) }
     var biometricRetryToken by remember { mutableStateOf(0) }
-    var downloadStatusText by remember { mutableStateOf("Preparing toolchain payload download...") }
+    var downloadStatusText by remember { mutableStateOf("Starting payload download...") }
+    val downloadEngine = remember(context) { DownloadEngine(context) }
 
     LaunchedEffect(bootRetryToken) {
         androidx.compose.runtime.withFrameNanos { }
@@ -120,12 +124,11 @@ private fun MainAppContent() {
         if (bootState != "DOWNLOADING") {
             return@LaunchedEffect
         }
-        val destFile = java.io.File(context.filesDir, "toolchain.7z")
+        val destFile = File(context.filesDir, PAYLOAD_FILENAME)
         if (destFile.exists()) {
             bootState = "EXTRACTION"
             return@LaunchedEffect
         }
-        val downloadEngine = DownloadEngine(context)
         downloadEngine.download(
             url = PAYLOAD_URL,
             destFile = destFile,
@@ -138,8 +141,9 @@ private fun MainAppContent() {
                 is DownloadState.Downloading -> {
                     val totalBytes = state.totalBytes
                     val progressLabel = if (totalBytes > 0) {
-                        val progress = (state.bytesReceived * 100f / totalBytes).coerceIn(0f, 100f)
-                        "%.1f%%".format(progress)
+                        val progress = (state.bytesReceived * 100.0 / totalBytes)
+                            .coerceIn(0.0, 100.0)
+                        String.format(Locale.US, "%.1f%%", progress)
                     } else {
                         "..."
                     }
@@ -158,7 +162,10 @@ private fun MainAppContent() {
                     bootState = "EXTRACTION"
                 }
                 is DownloadState.Failed -> {
-                    crashLog = state.cause?.message?.let { "${state.reason}: $it" } ?: state.reason
+                    val causeDetails = state.cause?.message
+                        ?: state.cause?.let { it::class.simpleName }
+                        ?: "Unknown error"
+                    crashLog = "${state.reason}: $causeDetails"
                     bootState = "ERROR"
                 }
                 DownloadState.Idle -> {
