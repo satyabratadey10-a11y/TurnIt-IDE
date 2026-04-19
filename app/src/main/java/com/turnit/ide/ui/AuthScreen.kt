@@ -1,12 +1,12 @@
 package com.turnit.ide.ui
 
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateColor
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,19 +31,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.paint
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.painterResource
-import com.turnit.ide.R
 import com.turnit.ide.auth.FirebaseAuthManager
 import kotlinx.coroutines.launch
 
@@ -77,9 +70,14 @@ fun AuthScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .paint(
-                        painter = painterResource(id = R.drawable.bg_glass_bubble),
-                        contentScale = androidx.compose.ui.layout.ContentScale.FillBounds
+                    .background(
+                        Color.White.copy(alpha = 0.1f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .border(
+                        1.dp,
+                        Color.White.copy(alpha = 0.2f),
+                        RoundedCornerShape(16.dp)
                     )
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -194,35 +192,22 @@ fun AuthScreen(
 
 @Composable
 private fun AnimatedRgbLogo() {
-    val transition = rememberInfiniteTransition(label = "auth_logo_shift")
-    val shift by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
+    val infiniteTransition = rememberInfiniteTransition(label = "auth_logo_color")
+    val color by infiniteTransition.animateColor(
+        initialValue = Color.Red,
+        targetValue = Color.Blue,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(2000),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "auth_logo_shift_value"
+        label = "auth_logo_color_value"
     )
 
     Text(
         text = "TurnIt",
-        style = TextStyle(
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    Color(0xFFFF3B3B),
-                    Color(0xFF3BFF4F),
-                    Color(0xFF3B82FF),
-                    Color(0xFFFF3B3B)
-                ),
-                start = Offset(shift - 300f, 0f),
-                end = Offset(shift + 300f, 0f)
-            ),
-            fontSize = 42.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
+        fontSize = 32.sp,
+        fontWeight = FontWeight.Bold,
+        color = color
     )
 }
 
