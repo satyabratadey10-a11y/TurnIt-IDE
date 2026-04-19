@@ -1,0 +1,60 @@
+name: Build Toolchain Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Stage toolchain directories
+        run: mkdir -p toolchain-env/opt
+
+      - name: Copy runner JDK
+        run: cp -a "$JAVA_HOME" toolchain-env/opt/jdk
+
+      - name: Copy runner Android SDK/NDK components
+        run: |
+          mkdir -p toolchain-env/opt/android-sdk
+          for component in cmdline-tools build-tools platforms ndk cmake; do
+            if [ -d "$ANDROID_HOME/$component" ]; then
+              cp -a "$ANDROID_HOME/$component" "toolchain-env/opt/android-sdk/$component"
+            fi
+          done
+
+      - name: Prune x86/windows and emulator bloat
+        run: |
+          find toolchain-env/opt/android-sdk -type d \( -name x86 -o -name x86_64 -o -iname windows -o -iname '*windows*' \) -prune -exec rm -rf {} + || true
+          rm -rf toolchain-env/opt/android-sdk/system-images
+          rm -rf toolchain-env/opt/android-sdk/emulator
+
+      - name: Download Gradle 8.6
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O gradle-8.6-bin.zip
+          unzip -q gradle-8.6-bin.zip -d toolchain-env/opt/
+          mv toolchain-env/opt/gradle-8.6 toolchain-env/opt/gradle
+          rm -f gradle-8.6-bin.zip
+
+      - name: Install 7z
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Compress toolchain payload
+        run: 7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on toolchain.7z toolchain-env/
+
+      - name: Publish toolchain release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0-toolchain' }}
+          files: toolchain.7z
