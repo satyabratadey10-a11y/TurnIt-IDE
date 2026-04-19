@@ -26,23 +26,12 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.turnit.ide.auth.FirebaseAuthManager
-import com.turnit.ide.engine.DownloadEngine
-import com.turnit.ide.engine.DownloadState
-import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.ui.AuthScreen
 import com.turnit.ide.ui.IdeColors
 import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.TurnItIdeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.Locale
-
-private const val PAYLOAD_URL =
-    "https://github.com/satyabratadey10-a11y/TurnIt-IDE/releases/download/v1.0-toolchain/toolchain-arm64.7z"
-private const val PAYLOAD_SHA256 =
-    "c62a9278d51a9f7112d9da80b29ab28d97b8dc00c11b98aece152923c677837c"
-private const val PAYLOAD_FILENAME = "toolchain.7z"
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,15 +63,13 @@ fun triggerBiometricPrompt(activity: FragmentActivity, onSuccess: () -> Unit, on
 @Composable
 private fun MainAppContent() {
     val context = LocalContext.current
-    var bootState by remember { mutableStateOf("BOOTING") } // BOOTING, AUTH, BIOMETRIC, DOWNLOADING, EXTRACTION, READY, ERROR
+    var bootState by remember { mutableStateOf("BOOTING") } // BOOTING, AUTH, BIOMETRIC, READY, ERROR
     var crashLog by remember { mutableStateOf<String?>(null) }
     var authManagerInstance by remember { mutableStateOf<FirebaseAuthManager?>(null) }
     var isBuildRunning by remember { mutableStateOf(false) }
     var bootRetryToken by remember { mutableStateOf(0) }
     var biometricError by remember { mutableStateOf<String?>(null) }
     var biometricRetryToken by remember { mutableStateOf(0) }
-    var downloadStatusText by remember { mutableStateOf("Starting payload download...") }
-    val downloadEngine = remember(context) { DownloadEngine(context) }
 
     LaunchedEffect(bootRetryToken) {
         androidx.compose.runtime.withFrameNanos { }
@@ -109,7 +96,7 @@ private fun MainAppContent() {
                 activity = activity,
                 onSuccess = {
                     biometricError = null
-                    bootState = "DOWNLOADING"
+                    bootState = "READY"
                 },
                 onError = { error ->
                     biometricError = error
@@ -117,76 +104,6 @@ private fun MainAppContent() {
             )
         } else {
             biometricError = "Unable to launch biometric prompt."
-        }
-    }
-
-    LaunchedEffect(bootState) {
-        if (bootState != "DOWNLOADING") {
-            return@LaunchedEffect
-        }
-        val destFile = File(context.filesDir, PAYLOAD_FILENAME)
-        if (destFile.exists()) {
-            bootState = "EXTRACTION"
-            return@LaunchedEffect
-        }
-        downloadEngine.download(
-            url = PAYLOAD_URL,
-            destFile = destFile,
-            sha256 = PAYLOAD_SHA256
-        ).collect { state ->
-            when (state) {
-                is DownloadState.Connecting -> {
-                    downloadStatusText = "Connecting to payload server..."
-                }
-                is DownloadState.Downloading -> {
-                    val totalBytes = state.totalBytes
-                    val progressLabel = if (totalBytes > 0) {
-                        val progress = (state.bytesReceived * 100.0 / totalBytes)
-                            .coerceIn(0.0, 100.0)
-                        String.format(Locale.US, "%.1f%%", progress)
-                    } else {
-                        "..."
-                    }
-                    val totalLabel = if (totalBytes > 0) {
-                        downloadEngine.formatBytes(totalBytes)
-                    } else {
-                        "unknown size"
-                    }
-                    downloadStatusText =
-                        "Downloading payload $progressLabel (${downloadEngine.formatBytes(state.bytesReceived)} / $totalLabel)"
-                }
-                is DownloadState.Verifying -> {
-                    downloadStatusText = "Verifying payload integrity..."
-                }
-                is DownloadState.Done -> {
-                    bootState = "EXTRACTION"
-                }
-                is DownloadState.Failed -> {
-                    val causeDetails = state.cause?.message
-                        ?: state.cause?.let { it::class.simpleName }
-                        ?: "Unknown error"
-                    crashLog = "${state.reason}: $causeDetails"
-                    bootState = "ERROR"
-                }
-                DownloadState.Idle -> {
-                    downloadStatusText = "Starting payload download..."
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(bootState) {
-        if (bootState != "EXTRACTION") {
-            return@LaunchedEffect
-        }
-        val bootstrapSucceeded = withContext(Dispatchers.IO) {
-            ExtractionEngine(context).bootstrapEnvironment(context)
-        }
-        if (bootstrapSucceeded) {
-            bootState = "READY"
-        } else {
-            crashLog = "Terminal bootstrap failed during initialization."
-            bootState = "ERROR"
         }
     }
 
@@ -260,40 +177,6 @@ private fun MainAppContent() {
                             Text("Retry biometric unlock")
                         }
                     }
-                }
-            }
-        }
-
-        "DOWNLOADING" -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(IdeColors.Bg),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    CircularProgressIndicator()
-                    Text(downloadStatusText, modifier = Modifier.padding(horizontal = 16.dp))
-                }
-            }
-        }
-
-        "EXTRACTION" -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(IdeColors.Bg),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    CircularProgressIndicator()
-                    Text("Bootstrapping Terminal Engine...")
                 }
             }
         }
