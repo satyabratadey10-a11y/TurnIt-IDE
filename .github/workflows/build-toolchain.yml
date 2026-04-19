@@ -57,8 +57,8 @@ jobs:
       - name: Compress toolchain payload
         run: 7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on toolchain.7z toolchain-env/
 
-      - name: Publish toolchain release asset
-        uses: softprops/action-gh-release@v2
+      - name: Upload IDE APK
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0-toolchain' }}
-          files: toolchain.7z
+         name: TurnIt-IDE-Debug-Build
+         path: app/build/outputs/apk/debug/tools.7z
