@@ -63,7 +63,7 @@ fun triggerBiometricPrompt(activity: FragmentActivity, onSuccess: () -> Unit, on
 @Composable
 private fun MainAppContent() {
     val context = LocalContext.current
-    var bootState by remember { mutableStateOf("BOOTING") } // BOOTING, AUTH, BIOMETRIC, READY, ERROR
+    var bootState by remember { mutableStateOf("BOOTING") } // BOOTING -> AUTH -> BIOMETRIC -> READY (or ERROR)
     var crashLog by remember { mutableStateOf<String?>(null) }
     var authManagerInstance by remember { mutableStateOf<FirebaseAuthManager?>(null) }
     var isBuildRunning by remember { mutableStateOf(false) }
