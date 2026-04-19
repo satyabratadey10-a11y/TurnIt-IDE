@@ -25,24 +25,23 @@ import androidx.compose.ui.unit.dp
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import com.google.firebase.auth.FirebaseAuth
 import com.turnit.ide.auth.FirebaseAuthManager
 import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.ui.AuthScreen
 import com.turnit.ide.ui.IdeColors
 import com.turnit.ide.ui.MainShellScreen
 import com.turnit.ide.ui.TurnItIdeTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
-    private val authManager by lazy { FirebaseAuthManager() }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
             TurnItIdeTheme {
-                MainAppContent(authManager = authManager)
+                MainAppContent()
             }
         }
     }
@@ -63,62 +62,101 @@ fun triggerBiometricPrompt(activity: FragmentActivity, onSuccess: () -> Unit, on
 }
 
 @Composable
-private fun MainAppContent(authManager: FirebaseAuthManager) {
+private fun MainAppContent() {
     val context = LocalContext.current
-    val firebaseAuth = remember { FirebaseAuth.getInstance() }
-    var isAuthenticated by remember { mutableStateOf(authManager.isAuthenticated()) }
-    var isBiometricUnlocked by remember { mutableStateOf(false) }
-    var isBootstrapped by remember { mutableStateOf(false) }
+    var bootState by remember { mutableStateOf("BOOTING") } // BOOTING, AUTH, BIOMETRIC, EXTRACTION, READY, ERROR
+    var crashLog by remember { mutableStateOf<String?>(null) }
+    var authManager by remember { mutableStateOf<FirebaseAuthManager?>(null) }
     var isBuildRunning by remember { mutableStateOf(false) }
+    var bootRetryToken by remember { mutableStateOf(0) }
     var biometricError by remember { mutableStateOf<String?>(null) }
     var biometricRetryToken by remember { mutableStateOf(0) }
-    var bootstrapError by remember { mutableStateOf<String?>(null) }
-    var bootstrapRetryToken by remember { mutableStateOf(0) }
 
-    LaunchedEffect(firebaseAuth.currentUser?.uid) {
-        val hasUser = firebaseAuth.currentUser != null
-        isAuthenticated = hasUser
-        if (!hasUser) {
-            isBiometricUnlocked = false
-            isBootstrapped = false
-            biometricError = null
-            bootstrapError = null
+    LaunchedEffect(bootRetryToken) {
+        androidx.compose.runtime.withFrameNanos { }
+        crashLog = null
+        biometricError = null
+        runCatching {
+            val manager = withContext(Dispatchers.IO) { FirebaseAuthManager() }
+            authManager = manager
+            val hasUser = withContext(Dispatchers.IO) { manager.isAuthenticated() }
+            bootState = if (hasUser) "BIOMETRIC" else "AUTH"
+        }.onFailure { throwable ->
+            crashLog = throwable.message ?: "Initialization failed."
+            bootState = "ERROR"
         }
     }
 
-    when {
-        !isAuthenticated -> {
-            AuthScreen(
-                authManager = authManager,
-                onAuthenticated = {
-                    isAuthenticated = authManager.isAuthenticated()
-                    isBiometricUnlocked = false
-                    isBootstrapped = false
+    LaunchedEffect(bootState, biometricRetryToken) {
+        if (bootState != "BIOMETRIC") {
+            return@LaunchedEffect
+        }
+        val activity = context as? FragmentActivity
+        if (activity != null) {
+            triggerBiometricPrompt(
+                activity = activity,
+                onSuccess = {
                     biometricError = null
-                    bootstrapError = null
+                    bootState = "EXTRACTION"
+                },
+                onError = { error ->
+                    biometricError = error
                 }
             )
+        } else {
+            biometricError = "Unable to launch biometric prompt."
         }
+    }
 
-        !isBiometricUnlocked -> {
-            val activity = context as? FragmentActivity
-            LaunchedEffect(biometricRetryToken) {
-                if (activity != null && !isBiometricUnlocked) {
-                    triggerBiometricPrompt(
-                        activity = activity,
-                        onSuccess = {
-                            biometricError = null
-                            isBiometricUnlocked = true
-                        },
-                        onError = { error ->
-                            biometricError = error
-                        }
-                    )
-                } else if (activity == null) {
-                    biometricError = "Unable to launch biometric prompt."
+    LaunchedEffect(bootState) {
+        if (bootState != "EXTRACTION") {
+            return@LaunchedEffect
+        }
+        val bootstrapSucceeded = withContext(Dispatchers.IO) {
+            ExtractionEngine(context).bootstrapEnvironment(context)
+        }
+        if (bootstrapSucceeded) {
+            bootState = "READY"
+        } else {
+            crashLog = "Failed to bootstrap terminal environment."
+            bootState = "ERROR"
+        }
+    }
+
+    when (bootState) {
+        "BOOTING" -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(IdeColors.Bg),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text("Starting TurnIt IDE...")
                 }
             }
+        }
 
+        "AUTH" -> {
+            val manager = authManager
+            if (manager == null) {
+                bootState = "BOOTING"
+            } else {
+                AuthScreen(
+                    authManager = manager,
+                    onAuthenticated = {
+                        biometricError = null
+                        bootState = "BIOMETRIC"
+                    }
+                )
+            }
+        }
+
+        "BIOMETRIC" -> {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -141,7 +179,7 @@ private fun MainAppContent(authManager: FirebaseAuthManager) {
             }
         }
 
-        !isBootstrapped -> {
+        "EXTRACTION" -> {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -152,36 +190,40 @@ private fun MainAppContent(authManager: FirebaseAuthManager) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (bootstrapError == null) {
-                        CircularProgressIndicator()
-                        Text("Bootstrapping Terminal Engine...")
-                    } else {
-                        Text(bootstrapError.orEmpty(), modifier = Modifier.padding(horizontal = 16.dp))
-                        Button(onClick = {
-                            bootstrapError = null
-                            bootstrapRetryToken++
-                        }) {
-                            Text("Retry bootstrap")
-                        }
-                    }
-                }
-            }
-
-            LaunchedEffect(bootstrapRetryToken) {
-                val bootstrapSucceeded = ExtractionEngine(context).bootstrapEnvironment(context)
-                isBootstrapped = bootstrapSucceeded
-                if (!bootstrapSucceeded) {
-                    bootstrapError = "Failed to bootstrap terminal environment."
+                    CircularProgressIndicator()
+                    Text("Bootstrapping Terminal Engine...")
                 }
             }
         }
 
-        else -> {
+        "READY" -> {
             MainShellScreen(
                 isBuildRunning = isBuildRunning,
                 onRunBuild = { isBuildRunning = true },
                 onStopBuild = { isBuildRunning = false }
             )
+        }
+
+        else -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(IdeColors.Bg),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(crashLog ?: "Unexpected startup failure.", modifier = Modifier.padding(horizontal = 16.dp))
+                    Button(onClick = {
+                        bootState = "BOOTING"
+                        bootRetryToken++
+                    }) {
+                        Text("Retry startup")
+                    }
+                }
+            }
         }
     }
 }
