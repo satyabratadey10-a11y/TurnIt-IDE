@@ -34,16 +34,20 @@ jobs:
 
       - name: Prune x86/windows and emulator bloat
         run: |
-          find toolchain-env/opt/android-sdk -type d \( -name x86 -o -name x86_64 -o -iname windows -o -iname '*windows*' \) -prune -exec rm -rf {} + || true
+          find toolchain-env/opt/android-sdk -depth -type d \( -name x86 -o -name x86_64 -o -iname windows -o -iname '*windows*' \) -exec rm -rf {} + || true
           rm -rf toolchain-env/opt/android-sdk/system-images
           rm -rf toolchain-env/opt/android-sdk/emulator
 
       - name: Download Gradle 8.6
         run: |
+          set -e
           wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O gradle-8.6-bin.zip
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip.sha256 -O gradle-8.6-bin.zip.sha256
+          EXPECTED_SHA256="$(awk '{print $1}' gradle-8.6-bin.zip.sha256)"
+          echo "${EXPECTED_SHA256}  gradle-8.6-bin.zip" | sha256sum -c -
           unzip -q gradle-8.6-bin.zip -d toolchain-env/opt/
           mv toolchain-env/opt/gradle-8.6 toolchain-env/opt/gradle
-          rm -f gradle-8.6-bin.zip
+          rm -f gradle-8.6-bin.zip gradle-8.6-bin.zip.sha256
 
       - name: Install 7z
         run: |
