@@ -108,7 +108,7 @@ fun MainShellScreen(
     val context = LocalContext.current
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var chatPaneWeight by remember { mutableFloatStateOf(DEFAULT_CHAT_PANE_WEIGHT) }
+    var rightChatPaneWeight by remember { mutableFloatStateOf(DEFAULT_CHAT_PANE_WEIGHT) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -358,15 +358,37 @@ fun MainShellScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-                val idePaneWeight = 1f - chatPaneWeight
-                val dividerX = maxWidth * chatPaneWeight
+                val leftPaneWeight = 1f - rightChatPaneWeight
+                val dividerX = maxWidth * leftPaneWeight
                 val handleOffsetX = dividerX - 12.dp
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         Box(
                             modifier = Modifier
-                                .weight(chatPaneWeight)
+                                .weight(leftPaneWeight)
+                                .fillMaxHeight()
+                                .background(IdeColors.Bg)
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                PaneTabStrip(
+                                    activePane = activePane,
+                                    onSelect = { activePane = it }
+                                )
+                                HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    when (activePane) {
+                                        IdePane.TERMINAL -> TerminalConsoleView(consoleLogs)
+                                        IdePane.EDITOR -> CodeEditorView()
+                                        IdePane.FILE_TREE -> FileTreePanePlaceholder()
+                                    }
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(rightChatPaneWeight)
                                 .fillMaxHeight()
                                 .background(IdeColors.BgSurface)
                         ) {
@@ -387,28 +409,6 @@ fun MainShellScreen(
                                 onSend = sendChatPrompt
                             )
                         }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(idePaneWeight)
-                                .fillMaxHeight()
-                                .background(IdeColors.Bg)
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                PaneTabStrip(
-                                    activePane = activePane,
-                                    onSelect = { activePane = it }
-                                )
-                                HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    when (activePane) {
-                                        IdePane.TERMINAL -> TerminalConsoleView(consoleLogs)
-                                        IdePane.EDITOR -> CodeEditorView()
-                                        IdePane.FILE_TREE -> FileTreePanePlaceholder()
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     Box(
@@ -421,11 +421,14 @@ fun MainShellScreen(
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     val deltaWeight = dragAmount / totalWidthInPx
-                                    chatPaneWeight =
-                                        (chatPaneWeight + deltaWeight).coerceIn(
-                                            MIN_CHAT_PANE_WEIGHT,
-                                            MAX_CHAT_PANE_WEIGHT
+                                    val minLeftPaneWeight = 1f - MAX_CHAT_PANE_WEIGHT
+                                    val maxLeftPaneWeight = 1f - MIN_CHAT_PANE_WEIGHT
+                                    val resizedLeftPaneWeight =
+                                        (leftPaneWeight + deltaWeight).coerceIn(
+                                            minLeftPaneWeight,
+                                            maxLeftPaneWeight
                                         )
+                                    rightChatPaneWeight = 1f - resizedLeftPaneWeight
                                 }
                             }
                     )
