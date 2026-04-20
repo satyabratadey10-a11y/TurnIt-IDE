@@ -29,7 +29,11 @@ class ExtractionEngine(private val appContext: Context? = null) {
                     }
                 }
             }
-            prootFile.setExecutable(true, false)
+            if (prootFile.exists()) {
+                prootFile.setExecutable(true, false)
+                prootFile.setReadable(true, false)
+                prootFile.setWritable(true, false)
+            }
 
             val rootfsDir = File(targetContext.filesDir, "rootfs")
             if (rootfsDir.exists()) {
