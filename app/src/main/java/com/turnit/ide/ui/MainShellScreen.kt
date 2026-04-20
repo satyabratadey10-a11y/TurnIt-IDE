@@ -89,6 +89,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -106,6 +108,7 @@ import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -117,6 +120,8 @@ private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
+private const val TERMINAL_PROMPT_SUFFIX = " \$ "
+private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,6 +146,10 @@ fun MainShellScreen(
         )
     }
     var terminalInput by remember { mutableStateOf("") }
+    var isExecuting by remember { mutableStateOf(false) }
+    var currentDir by remember { mutableStateOf("~") }
+    var executionResetJob by remember { mutableStateOf<Job?>(null) }
+    var executionNonce by remember { mutableStateOf(0) }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
@@ -197,30 +206,52 @@ fun MainShellScreen(
         startShellSession()
     }
 
-    val runCommand: (String) -> Unit = run@{ command ->
+    val runCommand: (String) -> Boolean = run@{ command ->
         val trimmed = command.trim()
-        if (trimmed.isBlank()) return@run
+        if (trimmed.isBlank()) return@run false
         activePane = IdePane.TERMINAL
         if (!isShellReady || isExtractingRootfs) {
             consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
-            return@run
+            return@run false
         }
         if (!isRunning) {
             startShellSession()
             consoleLogs.add("[PRoot shell is starting, please retry command]\n")
-            return@run
+            return@run false
         }
         consoleLogs.add("\n$ $trimmed\n")
         if (!shellEngine.sendInput(trimmed)) {
             consoleLogs.add("[Failed to send input to PRoot shell]\n")
+            return@run false
         }
+        true
     }
     val handleRunClick = { runCommand(testCompileCommand) }
     val handleTerminalSubmit = {
         val command = terminalInput.trim()
         if (command.isNotBlank()) {
             terminalInput = ""
-            runCommand(command)
+            executionResetJob?.cancel()
+            executionNonce += 1
+            val submitNonce = executionNonce
+            isExecuting = true
+            if (command.startsWith("cd ")) {
+                val targetDir = command.removePrefix("cd ").trim()
+                if (targetDir.isNotBlank()) {
+                    currentDir = targetDir
+                }
+            }
+            val submitted = runCommand(command)
+            if (!submitted) {
+                isExecuting = false
+            } else {
+                executionResetJob = scope.launch {
+                    delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
+                    if (executionNonce == submitNonce) {
+                        isExecuting = false
+                    }
+                }
+            }
         }
     }
 
@@ -507,6 +538,8 @@ fun MainShellScreen(
                                         IdePane.TERMINAL -> TerminalConsoleView(
                                             logs = consoleLogs,
                                             input = terminalInput,
+                                            isExecuting = isExecuting,
+                                            currentDir = currentDir,
                                             onInputChange = { terminalInput = it },
                                             onSubmit = handleTerminalSubmit
                                         )
@@ -772,6 +805,8 @@ private fun ChatPane(
 private fun TerminalConsoleView(
     logs: List<String>,
     input: String,
+    isExecuting: Boolean,
+    currentDir: String,
     onInputChange: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
@@ -805,29 +840,48 @@ private fun TerminalConsoleView(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextField(
-                value = input,
-                onValueChange = onInputChange,
-                label = { Text("Command") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrect = false,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSend = { onSubmit() }
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSubmit) {
-                Icon(
-                    imageVector = Icons.Filled.Terminal,
-                    contentDescription = "Run command",
-                    tint = IdeColors.AccentGreen
+            if (isExecuting) {
+                Text(
+                    text = "Executing command...",
+                    color = Color.Gray,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Executing command"
+                    }
                 )
+            } else {
+                Text(
+                    text = "$currentDir$TERMINAL_PROMPT_SUFFIX",
+                    color = Color.Green,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.width(8.dp))
+                TextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    label = { Text("Command") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = { onSubmit() }
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = onSubmit) {
+                    Icon(
+                        imageVector = Icons.Filled.Terminal,
+                        contentDescription = "Run command",
+                        tint = IdeColors.AccentGreen
+                    )
+                }
             }
         }
     }
