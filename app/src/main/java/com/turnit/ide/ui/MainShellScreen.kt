@@ -120,6 +120,7 @@ private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
+private const val TERMINAL_PROMPT_SUFFIX = " \$ "
 private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -851,7 +852,7 @@ private fun TerminalConsoleView(
                 )
             } else {
                 Text(
-                    text = "${currentDir} \$ ",
+                    text = "$currentDir$TERMINAL_PROMPT_SUFFIX",
                     color = Color.Green,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp
