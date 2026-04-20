@@ -177,7 +177,9 @@ fun MainShellScreen(
             isExtractingRootfs = true
             consoleLogs.add("Extracting Ubuntu RootFS... Please wait.\n")
             val extracted = withContext(Dispatchers.IO) {
-                ExtractionEngine(context).bootstrapEnvironment(context)
+                ExtractionEngine(context).bootstrapEnvironment(context) { output ->
+                    consoleLogs.add(output)
+                }
             }
             isExtractingRootfs = false
             if (extracted && rootfsDir.exists() && prootBin.exists() && prootBin.canExecute()) {
