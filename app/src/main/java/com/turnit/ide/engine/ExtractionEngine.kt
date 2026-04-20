@@ -30,9 +30,18 @@ class ExtractionEngine(private val appContext: Context? = null) {
                 }
             }
             if (prootFile.exists()) {
-                prootFile.setExecutable(true, false)
-                prootFile.setReadable(true, false)
-                prootFile.setWritable(true, false)
+                val executableSet = prootFile.setExecutable(true, false)
+                val readableSet = prootFile.setReadable(true, false)
+                val writableSet = prootFile.setWritable(true, false)
+                if (!executableSet || !readableSet || !writableSet) {
+                    appendOutput("\n[REAL ERROR] Failed to apply required permissions to proot.")
+                    Log.e(TAG, "Failed to set permissions on ${prootFile.absolutePath}")
+                    return@withContext false
+                }
+            } else {
+                appendOutput("\n[REAL ERROR] Missing proot binary after extraction.")
+                Log.e(TAG, "proot binary missing at ${prootFile.absolutePath}")
+                return@withContext false
             }
 
             val rootfsDir = File(targetContext.filesDir, "rootfs")
