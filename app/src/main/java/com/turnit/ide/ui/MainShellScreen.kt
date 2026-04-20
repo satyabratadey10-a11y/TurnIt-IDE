@@ -144,6 +144,8 @@ fun MainShellScreen(
     var terminalInput by remember { mutableStateOf("") }
     var isExecuting by remember { mutableStateOf(false) }
     var currentDir by remember { mutableStateOf("~") }
+    var executionResetJob by remember { mutableStateOf<Job?>(null) }
+    var executionNonce by remember { mutableStateOf(0) }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
@@ -225,6 +227,9 @@ fun MainShellScreen(
         val command = terminalInput.trim()
         if (command.isNotBlank()) {
             terminalInput = ""
+            executionResetJob?.cancel()
+            executionNonce += 1
+            val submitNonce = executionNonce
             isExecuting = true
             if (command.startsWith("cd ")) {
                 val targetDir = command.removePrefix("cd ").trim()
@@ -236,9 +241,11 @@ fun MainShellScreen(
             if (!submitted) {
                 isExecuting = false
             } else {
-                scope.launch {
+                executionResetJob = scope.launch {
                     delay(1000)
-                    isExecuting = false
+                    if (executionNonce == submitNonce) {
+                        isExecuting = false
+                    }
                 }
             }
         }
