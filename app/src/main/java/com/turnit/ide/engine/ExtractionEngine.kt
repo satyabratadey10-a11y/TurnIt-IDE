@@ -53,22 +53,22 @@ class ExtractionEngine(private val appContext: Context? = null) {
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
             BufferedInputStream(assetManager.open("ubuntu.tar")).use { inputStream ->
-                    TarArchiveInputStream(inputStream).use { tarIn ->
-                        var entry = tarIn.nextTarEntry
-                        while (entry != null) {
-                            val destFile = File(rootfsDir, entry.name)
-                            if (entry.isDirectory) {
-                                destFile.mkdirs()
-                            } else {
-                                destFile.parentFile?.mkdirs()
-                                FileOutputStream(destFile).use { out ->
-                                    tarIn.copyTo(out)
-                                }
-                                // Force executable permissions for binaries
-                                destFile.setExecutable(true)
+                TarArchiveInputStream(inputStream).use { tarIn ->
+                    var entry = tarIn.nextTarEntry
+                    while (entry != null) {
+                        val destFile = File(rootfsDir, entry.name)
+                        if (entry.isDirectory) {
+                            destFile.mkdirs()
+                        } else {
+                            destFile.parentFile?.mkdirs()
+                            FileOutputStream(destFile).use { out ->
+                                tarIn.copyTo(out)
                             }
-                            entry = tarIn.nextTarEntry
+                            // Force executable permissions for binaries
+                            destFile.setExecutable(true)
                         }
+                        entry = tarIn.nextTarEntry
+                    }
                 }
             }
 
