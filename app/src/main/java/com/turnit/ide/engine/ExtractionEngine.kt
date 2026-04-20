@@ -53,13 +53,13 @@ class ExtractionEngine(private val appContext: Context? = null) {
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
             try {
-                val prootDest = java.io.File(targetContext.filesDir, "proot")
-                val prootIn = targetContext.assets.open("proot")
-                val prootOut = java.io.FileOutputStream(prootDest)
-                prootIn.copyTo(prootOut)
-                prootIn.close()
-                prootOut.close()
-                prootDest.setExecutable(true, false)
+                val prootDestination = java.io.File(targetContext.filesDir, "proot")
+                targetContext.assets.open("proot").use { prootIn ->
+                    java.io.FileOutputStream(prootDestination).use { prootOut ->
+                        prootIn.copyTo(prootOut)
+                    }
+                }
+                prootDestination.setExecutable(true, false)
             } catch (e: Exception) {
                 appendOutput("\n[DEBUG] Failed to copy proot: ${e.message}")
             }
