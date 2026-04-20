@@ -106,6 +106,7 @@ import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -141,6 +142,8 @@ fun MainShellScreen(
         )
     }
     var terminalInput by remember { mutableStateOf("") }
+    var isExecuting by remember { mutableStateOf(false) }
+    var currentDir by remember { mutableStateOf("~") }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
@@ -197,30 +200,47 @@ fun MainShellScreen(
         startShellSession()
     }
 
-    val runCommand: (String) -> Unit = run@{ command ->
+    val runCommand: (String) -> Boolean = run@{ command ->
         val trimmed = command.trim()
-        if (trimmed.isBlank()) return@run
+        if (trimmed.isBlank()) return@run false
         activePane = IdePane.TERMINAL
         if (!isShellReady || isExtractingRootfs) {
             consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
-            return@run
+            return@run false
         }
         if (!isRunning) {
             startShellSession()
             consoleLogs.add("[PRoot shell is starting, please retry command]\n")
-            return@run
+            return@run false
         }
         consoleLogs.add("\n$ $trimmed\n")
         if (!shellEngine.sendInput(trimmed)) {
             consoleLogs.add("[Failed to send input to PRoot shell]\n")
+            return@run false
         }
+        true
     }
     val handleRunClick = { runCommand(testCompileCommand) }
     val handleTerminalSubmit = {
         val command = terminalInput.trim()
         if (command.isNotBlank()) {
             terminalInput = ""
-            runCommand(command)
+            isExecuting = true
+            if (command.startsWith("cd ")) {
+                val targetDir = command.removePrefix("cd ").trim()
+                if (targetDir.isNotBlank()) {
+                    currentDir = targetDir
+                }
+            }
+            val submitted = runCommand(command)
+            if (!submitted) {
+                isExecuting = false
+            } else {
+                scope.launch {
+                    delay(1000)
+                    isExecuting = false
+                }
+            }
         }
     }
 
@@ -507,6 +527,8 @@ fun MainShellScreen(
                                         IdePane.TERMINAL -> TerminalConsoleView(
                                             logs = consoleLogs,
                                             input = terminalInput,
+                                            isExecuting = isExecuting,
+                                            currentDir = currentDir,
                                             onInputChange = { terminalInput = it },
                                             onSubmit = handleTerminalSubmit
                                         )
@@ -772,6 +794,8 @@ private fun ChatPane(
 private fun TerminalConsoleView(
     logs: List<String>,
     input: String,
+    isExecuting: Boolean,
+    currentDir: String,
     onInputChange: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
@@ -805,29 +829,45 @@ private fun TerminalConsoleView(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextField(
-                value = input,
-                onValueChange = onInputChange,
-                label = { Text("Command") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrect = false,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSend = { onSubmit() }
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSubmit) {
-                Icon(
-                    imageVector = Icons.Filled.Terminal,
-                    contentDescription = "Run command",
-                    tint = IdeColors.AccentGreen
+            if (isExecuting) {
+                Text(
+                    text = "Executing command...",
+                    color = Color.Gray,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
                 )
+            } else {
+                Text(
+                    text = "${currentDir} \$ ",
+                    color = Color.Green,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.width(8.dp))
+                TextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    label = { Text("Command") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = { onSubmit() }
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = onSubmit) {
+                    Icon(
+                        imageVector = Icons.Filled.Terminal,
+                        contentDescription = "Run command",
+                        tint = IdeColors.AccentGreen
+                    )
+                }
             }
         }
     }
