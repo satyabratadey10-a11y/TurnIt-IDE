@@ -52,6 +52,18 @@ class ExtractionEngine(private val appContext: Context? = null) {
             val assetManager = targetContext.assets
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
+            try {
+                val prootDest = java.io.File(targetContext.filesDir, "proot")
+                val prootIn = targetContext.assets.open("proot")
+                val prootOut = java.io.FileOutputStream(prootDest)
+                prootIn.copyTo(prootOut)
+                prootIn.close()
+                prootOut.close()
+                prootDest.setExecutable(true, false)
+            } catch (e: Exception) {
+                appendOutput("\n[DEBUG] Failed to copy proot: ${e.message}")
+            }
+
             BufferedInputStream(assetManager.open("ubuntu.tar")).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
                     var entry = tarIn.nextTarEntry
