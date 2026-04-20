@@ -120,6 +120,7 @@ private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
+private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -244,7 +245,7 @@ fun MainShellScreen(
                 isExecuting = false
             } else {
                 executionResetJob = scope.launch {
-                    delay(1000)
+                    delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
                     if (executionNonce == submitNonce) {
                         isExecuting = false
                     }
