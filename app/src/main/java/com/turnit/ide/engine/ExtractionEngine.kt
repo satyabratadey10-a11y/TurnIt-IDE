@@ -78,6 +78,12 @@ class ExtractionEngine(private val appContext: Context? = null) {
         } catch (e: Exception) {
             val errorLog = Log.getStackTraceString(e)
             appendOutput("\n[REAL ERROR] $errorLog")
+            try {
+                val assetList = targetContext.assets.list("")?.joinToString("\n- ") ?: "None"
+                appendOutput("\n\n[DEBUG] Files physically present in assets folder:\n- $assetList")
+            } catch (listEx: Exception) {
+                appendOutput("\n[DEBUG] Could not list assets: ${listEx.message}")
+            }
             Log.e(TAG, "Bootstrap extraction failed", e)
             false
         }
