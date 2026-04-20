@@ -52,9 +52,8 @@ class ExtractionEngine(private val appContext: Context? = null) {
             val assetManager = targetContext.assets
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
-            BufferedInputStream(assetManager.open("ubuntu.tar.gz")).use { inputStream ->
-                GzipCompressorInputStream(inputStream).use { gzipIn ->
-                    TarArchiveInputStream(gzipIn).use { tarIn ->
+            BufferedInputStream(assetManager.open("ubuntu.tar")).use { inputStream ->
+                    TarArchiveInputStream(inputStream).use { tarIn ->
                         var entry = tarIn.nextTarEntry
                         while (entry != null) {
                             val destFile = File(rootfsDir, entry.name)
@@ -70,7 +69,6 @@ class ExtractionEngine(private val appContext: Context? = null) {
                             }
                             entry = tarIn.nextTarEntry
                         }
-                    }
                 }
             }
 
