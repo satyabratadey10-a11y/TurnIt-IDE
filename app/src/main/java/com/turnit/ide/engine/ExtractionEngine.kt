@@ -37,29 +37,29 @@ class ExtractionEngine(private val appContext: Context? = null) {
             }
 
             val assetManager = targetContext.assets
-            val rootFsDir = File(targetContext.filesDir, "rootfs")
-            if (!rootFsDir.exists()) rootFsDir.mkdirs()
+            if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
-            val inputStream = BufferedInputStream(assetManager.open("ubuntu.tar.gz"))
-            val gzipIn = GzipCompressorInputStream(inputStream)
-            val tarIn = TarArchiveInputStream(gzipIn)
-
-            var entry = tarIn.nextTarEntry
-            while (entry != null) {
-                val destFile = File(rootFsDir, entry.name)
-                if (entry.isDirectory) {
-                    destFile.mkdirs()
-                } else {
-                    destFile.parentFile?.mkdirs()
-                    val out = FileOutputStream(destFile)
-                    tarIn.copyTo(out)
-                    out.close()
-                    // Force executable permissions for binaries
-                    destFile.setExecutable(true)
+            BufferedInputStream(assetManager.open("ubuntu.tar.gz")).use { inputStream ->
+                GzipCompressorInputStream(inputStream).use { gzipIn ->
+                    TarArchiveInputStream(gzipIn).use { tarIn ->
+                        var entry = tarIn.nextTarEntry
+                        while (entry != null) {
+                            val destFile = File(rootfsDir, entry.name)
+                            if (entry.isDirectory) {
+                                destFile.mkdirs()
+                            } else {
+                                destFile.parentFile?.mkdirs()
+                                FileOutputStream(destFile).use { out ->
+                                    tarIn.copyTo(out)
+                                }
+                                // Force executable permissions for binaries
+                                destFile.setExecutable(true)
+                            }
+                            entry = tarIn.nextTarEntry
+                        }
+                    }
                 }
-                entry = tarIn.nextTarEntry
             }
-            tarIn.close()
 
             true
         } catch (e: Exception) {
