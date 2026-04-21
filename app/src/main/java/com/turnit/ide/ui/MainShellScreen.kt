@@ -171,15 +171,15 @@ fun MainShellScreen(
             shellEngine.startProot(rootfsPath)
             activeJob = scope.launch {
                 var sawActiveSession = false
-                var inactiveChecks = 0
+                var inactiveCheckCount = 0
                 while (hasShellStarted) {
                     val sessionActive = shellEngine.isSessionActive
                     if (sessionActive) {
                         sawActiveSession = true
-                        inactiveChecks = 0
+                        inactiveCheckCount = 0
                     } else {
-                        inactiveChecks += 1
-                        if (sawActiveSession || inactiveChecks >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
+                        inactiveCheckCount += 1
+                        if (sawActiveSession || inactiveCheckCount >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
                             isRunning = false
                             hasShellStarted = false
                             onStopBuild()
