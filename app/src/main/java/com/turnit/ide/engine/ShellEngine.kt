@@ -34,26 +34,13 @@ class ShellEngine(private val context: Context) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val prootBinary = File(nativeDir, "libproot.so")
 
-        // 1. Force the UI to prove what path it is using
-        appendOutput("\n[DEBUG] Target execution path: ${prootBinary.absolutePath}")
+        appendOutput("\n[DEBUG-V2] Current nativeDir: $nativeDir")
 
-        // 2. Hard check for existence
         if (!prootBinary.exists()) {
-            appendOutput("\n[FATAL] libproot.so is MISSING from nativeLibraryDir! AGP legacy packaging failed.")
-            return@flow // Stop execution
+            appendOutput("\n[FATAL] libproot.so missing! Path: ${prootBinary.absolutePath}")
+            return@flow
         }
 
-        // 3. Hard check for OS execution rights
-        if (!prootBinary.canExecute()) {
-            appendOutput("\n[FATAL] libproot.so exists but is NOT executable. OS blocked it.")
-            return@flow // Stop execution
-        }
-
-        // -0: Fake root privileges
-        // -r: Target root filesystem
-        // -w: Working directory inside rootfs
-        // -b: Bind essential Android system directories
-        // 4. Execute the correct binary
         val processBuilder = ProcessBuilder(
             prootBinary.absolutePath,
             "--link2symlink",
