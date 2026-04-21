@@ -179,6 +179,8 @@ fun MainShellScreen(
                         inactiveCheckCount = 0
                     } else {
                         inactiveCheckCount += 1
+                        // Stop when a previously active session ends, or when startup never
+                        // transitions to active within the configured grace window.
                         if (sawActiveSession || inactiveCheckCount >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
                             isRunning = false
                             hasShellStarted = false

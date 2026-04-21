@@ -12,6 +12,7 @@ class ShellEngine(private val context: Context) {
 
     private var process: Process? = null
     private var outputCallback: ((String) -> Unit)? = null
+    @Volatile
     private var isRunning = false
 
     // -------------------------------------------------------------------------
