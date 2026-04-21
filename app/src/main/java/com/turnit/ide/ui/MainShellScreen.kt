@@ -162,17 +162,16 @@ fun MainShellScreen(
             hasShellStarted = true
             isRunning = true
             onRunBuild()
-            activeJob = scope.launch {
-                try {
-                    shellEngine.startInteractiveShell().collect { outputLine ->
-                        consoleLogs.add(outputLine)
-                    }
-                } finally {
+            shellEngine.setOutputCallback { output ->
+                consoleLogs.add(output)
+                if (output.startsWith("[ShellEngine] Process exited with code")) {
                     isRunning = false
                     hasShellStarted = false
                     onStopBuild()
                 }
             }
+            val rootfsPath = File(context.filesDir, "rootfs").absolutePath
+            shellEngine.startProot(rootfsPath)
         }
     }
 
@@ -257,7 +256,7 @@ fun MainShellScreen(
 
     val handleStopClick = {
         if (isRunning) {
-            shellEngine.stopInteractiveShell()
+            shellEngine.stop()
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
             isRunning = false
