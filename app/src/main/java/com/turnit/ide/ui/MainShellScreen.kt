@@ -171,17 +171,17 @@ fun MainShellScreen(
             shellEngine.startProot(rootfsPath)
             activeJob = scope.launch {
                 var sawActiveSession = false
-                var inactiveCheckCount = 0
+                var consecutiveInactiveChecks = 0
                 while (hasShellStarted) {
                     val sessionActive = shellEngine.isSessionActive
                     if (sessionActive) {
                         sawActiveSession = true
-                        inactiveCheckCount = 0
+                        consecutiveInactiveChecks = 0
                     } else {
-                        inactiveCheckCount += 1
+                        consecutiveInactiveChecks += 1
                         // Stop when a previously active session ends, or when startup never
                         // transitions to active within the configured grace window.
-                        if (sawActiveSession || inactiveCheckCount >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
+                        if (sawActiveSession || consecutiveInactiveChecks >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
                             isRunning = false
                             hasShellStarted = false
                             onStopBuild()
