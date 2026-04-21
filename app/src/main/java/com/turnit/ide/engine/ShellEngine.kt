@@ -14,7 +14,7 @@ import java.io.OutputStreamWriter
 class ShellEngine(private val context: Context) {
 
     private val rootfsDir = File(context.filesDir, "rootfs")
-    private val prootBin = File(context.filesDir, "proot")
+    private val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
     private val processLock = Any()
     @Volatile private var runningProcess: Process? = null
     @Volatile private var runningWriter: BufferedWriter? = null
@@ -28,7 +28,7 @@ class ShellEngine(private val context: Context) {
             return@flow
         }
         if (!prootBin.exists() || !prootBin.canExecute()) {
-            emit("FATAL: PRoot engine missing or not executable.\n")
+            emit("FATAL: PRoot engine missing or not executable at ${prootBin.absolutePath} (nativeLibraryDir).\n")
             return@flow
         }
 

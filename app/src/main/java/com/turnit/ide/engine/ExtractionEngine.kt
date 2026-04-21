@@ -5,7 +5,6 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -21,29 +20,6 @@ class ExtractionEngine(private val appContext: Context? = null) {
     ): Boolean = withContext(Dispatchers.IO) {
         val targetContext = context ?: return@withContext false
         try {
-            val prootFile = File(targetContext.filesDir, "proot")
-            if (!prootFile.exists()) {
-                targetContext.assets.open("proot").use { input ->
-                    prootFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-            if (prootFile.exists()) {
-                val executableSet = prootFile.setExecutable(true, false)
-                val readableSet = prootFile.setReadable(true, false)
-                val writableSet = prootFile.setWritable(true, false)
-                if (!executableSet || !readableSet || !writableSet) {
-                    appendOutput("\n[REAL ERROR] Failed to apply required permissions to proot.")
-                    Log.e(TAG, "Failed to set permissions on ${prootFile.absolutePath}")
-                    return@withContext false
-                }
-            } else {
-                appendOutput("\n[REAL ERROR] Missing proot binary after extraction.")
-                Log.e(TAG, "proot binary missing at ${prootFile.absolutePath}")
-                return@withContext false
-            }
-
             val rootfsDir = File(targetContext.filesDir, "rootfs")
             if (rootfsDir.exists()) {
                 return@withContext true
@@ -51,18 +27,6 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             val assetManager = targetContext.assets
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
-
-            try {
-                val prootDestination = java.io.File(targetContext.filesDir, "proot")
-                targetContext.assets.open("proot").use { prootIn ->
-                    java.io.FileOutputStream(prootDestination).use { prootOut ->
-                        prootIn.copyTo(prootOut)
-                    }
-                }
-                prootDestination.setExecutable(true, false)
-            } catch (e: Exception) {
-                appendOutput("\n[DEBUG] Failed to copy proot: ${e.message}")
-            }
 
             BufferedInputStream(assetManager.open("ubuntu.tar")).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
