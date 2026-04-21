@@ -164,14 +164,29 @@ fun MainShellScreen(
             onRunBuild()
             shellEngine.setOutputCallback { output ->
                 consoleLogs.add(output)
-                if (output.startsWith("[ShellEngine] Process exited with code")) {
-                    isRunning = false
-                    hasShellStarted = false
-                    onStopBuild()
-                }
             }
             val rootfsPath = File(context.filesDir, "rootfs").absolutePath
             shellEngine.startProot(rootfsPath)
+            activeJob = scope.launch {
+                var sawActiveSession = false
+                var inactiveChecks = 0
+                while (hasShellStarted) {
+                    val sessionActive = shellEngine.isSessionActive
+                    if (sessionActive) {
+                        sawActiveSession = true
+                        inactiveChecks = 0
+                    } else {
+                        inactiveChecks += 1
+                        if (sawActiveSession || inactiveChecks >= 10) {
+                            isRunning = false
+                            hasShellStarted = false
+                            onStopBuild()
+                            break
+                        }
+                    }
+                    delay(200)
+                }
+            }
         }
     }
 
