@@ -28,7 +28,7 @@ class ShellEngine(private val context: Context) {
             return@flow
         }
         if (!prootBin.exists() || !prootBin.canExecute()) {
-            emit("FATAL: PRoot engine missing or not executable.\n")
+            emit("FATAL: PRoot engine missing or not executable at ${prootBin.absolutePath} (nativeLibraryDir).\n")
             return@flow
         }
 
