@@ -14,7 +14,6 @@ import java.io.OutputStreamWriter
 class ShellEngine(private val context: Context) {
 
     private val rootfsDir = File(context.filesDir, "rootfs")
-    private val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
     private val processLock = Any()
     @Volatile private var runningProcess: Process? = null
     @Volatile private var runningWriter: BufferedWriter? = null
@@ -27,9 +26,10 @@ class ShellEngine(private val context: Context) {
             emit("FATAL: Rootfs not found at ${rootfsDir.absolutePath}\n")
             return@flow
         }
-        if (!prootBin.exists() || !prootBin.canExecute()) {
-            emit("FATAL: PRoot engine missing or not executable at ${prootBin.absolutePath} (nativeLibraryDir).\n")
-            return@flow
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val prootBinary = File(nativeDir, "libproot.so")
+        if (!prootBinary.exists()) {
+            throw java.io.FileNotFoundException("libproot.so missing from nativeLibraryDir! Check AGP packagingOptions.")
         }
 
         // -0: Fake root privileges
@@ -37,7 +37,7 @@ class ShellEngine(private val context: Context) {
         // -w: Working directory inside rootfs
         // -b: Bind essential Android system directories
         val cmdArgs = listOf(
-            prootBin.absolutePath,
+            prootBinary.absolutePath,
             "--link2symlink",
             "-0",
             "-r", rootfsDir.absolutePath,
