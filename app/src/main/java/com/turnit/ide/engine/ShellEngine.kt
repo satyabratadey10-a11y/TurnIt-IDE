@@ -1,4 +1,4 @@
-package com.turnit.ide.shell
+package com.turnit.ide.engine
 
 import android.content.Context
 import android.util.Log
@@ -12,6 +12,7 @@ class ShellEngine(private val context: Context) {
 
     private var process: Process? = null
     private var outputCallback: ((String) -> Unit)? = null
+    @Volatile
     private var isRunning = false
 
     // -------------------------------------------------------------------------

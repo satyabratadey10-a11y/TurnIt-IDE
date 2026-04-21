@@ -122,6 +122,8 @@ private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
 private const val TERMINAL_PROMPT_SUFFIX = " \$ "
 private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
+private const val SHELL_SESSION_POLL_INTERVAL_MS = 200L
+private const val SHELL_SESSION_INACTIVE_CHECK_LIMIT = 10
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,15 +164,31 @@ fun MainShellScreen(
             hasShellStarted = true
             isRunning = true
             onRunBuild()
+            shellEngine.setOutputCallback { output ->
+                consoleLogs.add(output)
+            }
+            val rootfsPath = File(context.filesDir, "rootfs").absolutePath
+            shellEngine.startProot(rootfsPath)
             activeJob = scope.launch {
-                try {
-                    shellEngine.startInteractiveShell().collect { outputLine ->
-                        consoleLogs.add(outputLine)
+                var sawActiveSession = false
+                var consecutiveInactiveChecks = 0
+                while (hasShellStarted) {
+                    val sessionActive = shellEngine.isSessionActive
+                    if (sessionActive) {
+                        sawActiveSession = true
+                        consecutiveInactiveChecks = 0
+                    } else {
+                        consecutiveInactiveChecks += 1
+                        // Stop when a previously active session ends, or when startup never
+                        // transitions to active within the configured grace window.
+                        if (sawActiveSession || consecutiveInactiveChecks >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
+                            isRunning = false
+                            hasShellStarted = false
+                            onStopBuild()
+                            break
+                        }
                     }
-                } finally {
-                    isRunning = false
-                    hasShellStarted = false
-                    onStopBuild()
+                    delay(SHELL_SESSION_POLL_INTERVAL_MS)
                 }
             }
         }
@@ -257,7 +275,7 @@ fun MainShellScreen(
 
     val handleStopClick = {
         if (isRunning) {
-            shellEngine.stopInteractiveShell()
+            shellEngine.stop()
             activeJob?.cancel()
             consoleLogs.add("\n[Process Killed by User]\n")
             isRunning = false
