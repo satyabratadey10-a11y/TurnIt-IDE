@@ -122,6 +122,8 @@ private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
 private const val TERMINAL_PROMPT_SUFFIX = " \$ "
 private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
+private const val SHELL_SESSION_POLL_INTERVAL_MS = 200L
+private const val SHELL_SESSION_INACTIVE_CHECK_LIMIT = 10
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -177,14 +179,14 @@ fun MainShellScreen(
                         inactiveChecks = 0
                     } else {
                         inactiveChecks += 1
-                        if (sawActiveSession || inactiveChecks >= 10) {
+                        if (sawActiveSession || inactiveChecks >= SHELL_SESSION_INACTIVE_CHECK_LIMIT) {
                             isRunning = false
                             hasShellStarted = false
                             onStopBuild()
                             break
                         }
                     }
-                    delay(200)
+                    delay(SHELL_SESSION_POLL_INTERVAL_MS)
                 }
             }
         }
