@@ -42,6 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
@@ -238,10 +239,11 @@ fun MainShellScreen(
             return@run false
         }
         consoleLogs.add("\n$ $trimmed\n")
-        if (!shellEngine.sendInput(trimmed)) {
+        if (shellEngine.isSessionActive != true) {
             consoleLogs.add("[Failed to send input to PRoot shell]\n")
             return@run false
         }
+        shellEngine.sendInput(trimmed)
         true
     }
     val handleRunClick = { runCommand(testCompileCommand) }
@@ -842,18 +844,20 @@ private fun TerminalConsoleView(
             .background(IdeColors.Bg)
             .padding(8.dp)
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f)
-        ) {
-            items(logs) { line ->
-                Text(
-                    text = line,
-                    color = IdeColors.TextSecondary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = 14.sp
-                )
+        SelectionContainer {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f)
+            ) {
+                items(logs) { line ->
+                    Text(
+                        text = line,
+                        color = IdeColors.TextSecondary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 14.sp
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
