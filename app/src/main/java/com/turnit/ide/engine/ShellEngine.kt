@@ -1,10 +1,9 @@
-package com.turnit.ide.engine
+package com.turnit.ide.shell
 
 import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.InputStream
-import java.io.OutputStream
 
 private const val TAG = "ShellEngine"
 
@@ -12,7 +11,6 @@ class ShellEngine(private val context: Context) {
 
     private var process: Process? = null
     private var outputCallback: ((String) -> Unit)? = null
-    @Volatile
     private var isRunning = false
 
     // -------------------------------------------------------------------------
@@ -24,59 +22,60 @@ class ShellEngine(private val context: Context) {
     }
 
     /**
-     * Launches PRoot using the Native Library Bypass.
-     * The libproot.so binary is executed directly from nativeLibraryDir,
-     * which is the only path Android guarantees exec-permission on without root.
+     * Starts a PRoot session using the Native Library Bypass.
+     * The binary is executed exclusively from nativeLibraryDir — never filesDir.
      *
-     * @param rootfsPath Absolute path to the extracted Ubuntu rootfs directory.
-     * @param command    Command to run inside the PRoot environment.
+     * @param rootfsPath Absolute path to the extracted Ubuntu rootfs.
+     * @param command    Entry command inside the PRoot environment.
      */
     fun startProot(rootfsPath: String, command: String = "/bin/bash") {
         if (isRunning) {
-            appendOutput("[ShellEngine] Session already active. Stop it first.")
+            appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
         }
 
         val prootBinary = resolveProotBinary() ?: return
 
-        val bindMounts = buildBindMounts()
-        val prootArgs  = buildProotArgs(
-            prootBinary  = prootBinary,
-            rootfsPath   = rootfsPath,
-            bindMounts   = bindMounts,
-            command      = command
+        val prootArgs = buildProotArgs(
+            prootBinary = prootBinary,
+            rootfsPath  = rootfsPath,
+            command     = command
         )
 
-        appendOutput("[ShellEngine-V2] Resolved proot binary: ${prootBinary.absolutePath}")
-        appendOutput("[ShellEngine-V2] canExecute() = ${prootBinary.canExecute()}")
-        appendOutput("[ShellEngine-V2] Command: ${prootArgs.joinToString(" ")}")
+        appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
+        appendOutput("[ShellEngine-V2] Launching PRoot session...")
+        appendOutput("[ShellEngine-V2] Binary path : ${prootBinary.absolutePath}")
+        appendOutput("[ShellEngine-V2] canExecute(): ${prootBinary.canExecute()}")
+        appendOutput("[ShellEngine-V2] Rootfs path : $rootfsPath")
+        appendOutput("[ShellEngine-V2] Full command: ${prootArgs.joinToString(" ")}")
+        appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
 
         try {
             val pb = ProcessBuilder(prootArgs).apply {
                 directory(context.filesDir)
                 redirectErrorStream(false)
                 environment().apply {
-                    put("PROOT_NO_SECCOMP",     "1")
-                    put("HOME",                 context.filesDir.absolutePath)
-                    put("TMPDIR",               context.cacheDir.absolutePath)
-                    put("PROOT_TMP_DIR",        context.cacheDir.absolutePath)
-                    put("LD_LIBRARY_PATH",      context.applicationInfo.nativeLibraryDir)
-                    // Prevent proot from trying to write loader state to a
-                    // non-exec path, which causes secondary Error 13s on
-                    // some OEM ROMs.
-                    put("PROOT_LOADER",         prootBinary.absolutePath)
+                    put("PROOT_NO_SECCOMP", "1")
+                    put("HOME",             context.filesDir.absolutePath)
+                    put("TMPDIR",           context.cacheDir.absolutePath)
+                    put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
+                    put("LD_LIBRARY_PATH",  context.applicationInfo.nativeLibraryDir)
+                    put("PROOT_LOADER",     prootBinary.absolutePath)
+                    put("TERM",             "xterm-256color")
+                    put("LANG",             "en_US.UTF-8")
                 }
             }
 
             process = pb.start().also { proc ->
                 isRunning = true
-                streamOutput(proc.inputStream,  prefix = "")
-                streamOutput(proc.errorStream,  prefix = "[ERR] ")
-                monitorProcessExit(proc)
+                pipeStream(proc.inputStream, prefix = "")
+                pipeStream(proc.errorStream, prefix = "[ERR] ")
+                watchExit(proc)
             }
 
         } catch (e: Exception) {
-            val msg = "[ShellEngine] FATAL: ProcessBuilder failed — ${e.message}"
+            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}\n" +
+                      "  If path still shows filesDir, another call site was not updated."
             Log.e(TAG, msg, e)
             appendOutput(msg)
             isRunning = false
@@ -84,138 +83,117 @@ class ShellEngine(private val context: Context) {
     }
 
     fun sendInput(text: String) {
-        val proc = process
-        if (proc == null || !isRunning) {
-            appendOutput("[ShellEngine] No active session to send input to.")
+        if (process == null || !isRunning) {
+            appendOutput("[ShellEngine-V2] No active session.")
             return
         }
         try {
-            proc.outputStream.write((text + "\n").toByteArray())
-            proc.outputStream.flush()
+            process!!.outputStream.write((text + "\n").toByteArray())
+            process!!.outputStream.flush()
         } catch (e: Exception) {
-            appendOutput("[ShellEngine] Failed to write input: ${e.message}")
+            appendOutput("[ShellEngine-V2] Input write failed: ${e.message}")
         }
     }
 
     fun stop() {
         process?.destroy()
-        process    = null
-        isRunning  = false
-        appendOutput("[ShellEngine] Session terminated.")
+        process   = null
+        isRunning = false
+        appendOutput("[ShellEngine-V2] Session stopped.")
     }
 
     val isSessionActive: Boolean get() = isRunning
 
     // -------------------------------------------------------------------------
-    // Binary Resolution — Native Library Bypass
+    // Native Library Bypass — Binary Resolution
+    // filesDir is NEVER used for the binary path.
     // -------------------------------------------------------------------------
 
-    /**
-     * Resolves the proot binary exclusively from nativeLibraryDir.
-     * filesDir is never consulted for the binary path.
-     * Returns null and emits a diagnostic if the binary is unusable.
-     */
     private fun resolveProotBinary(): File? {
-        val nativeDir  = context.applicationInfo.nativeLibraryDir
-        val prootFile  = File(nativeDir, "libproot.so")
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val binary    = File(nativeDir, "libproot.so")
 
-        appendOutput("[ShellEngine-V2] nativeLibraryDir  = $nativeDir")
-        appendOutput("[ShellEngine-V2] Absolute proot path = ${prootFile.absolutePath}")
+        appendOutput("[ShellEngine-V2] nativeLibraryDir   = $nativeDir")
+        appendOutput("[ShellEngine-V2] Resolved proot path = ${binary.absolutePath}")
 
-        if (!prootFile.exists()) {
+        if (!binary.exists()) {
             appendOutput(
-                "[ShellEngine] FATAL: libproot.so not found at ${prootFile.absolutePath}\n" +
-                "  → Verify jniLibs/arm64-v8a/libproot.so exists in source tree.\n" +
-                "  → Verify extractNativeLibs=\"true\" in AndroidManifest.xml.\n" +
-                "  → Verify no packagingOptions block is compressing the .so."
+                "[ShellEngine-V2] FATAL: libproot.so missing.\n" +
+                "  → Confirm jniLibs/arm64-v8a/libproot.so is in source tree.\n" +
+                "  → Confirm extractNativeLibs=\"true\" in AndroidManifest.xml.\n" +
+                "  → Confirm no packagingOptions block is compressing the .so."
             )
             return null
         }
 
-        if (!prootFile.canExecute()) {
+        if (!binary.canExecute()) {
             appendOutput(
-                "[ShellEngine] FATAL: libproot.so exists but canExecute()=false.\n" +
-                "  → This indicates the OEM ROM has revoked exec on nativeLibraryDir.\n" +
-                "  → Run: adb shell ls -lZ ${prootFile.absolutePath}\n" +
-                "  → Check logcat for: avc: denied { execmod } or { execute }"
+                "[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.\n" +
+                "  → OEM SELinux is likely denying exec on this path.\n" +
+                "  → Run: adb shell ls -lZ \"${binary.absolutePath}\"\n" +
+                "  → Run: adb logcat | grep avc  — look for execmod or execute denial."
             )
             return null
         }
 
-        return prootFile
+        return binary
     }
 
     // -------------------------------------------------------------------------
     // PRoot Argument Construction
     // -------------------------------------------------------------------------
 
-    private fun buildBindMounts(): List<Pair<String, String>> {
-        return listOf(
-            "/proc"           to "/proc",
-            "/sys"            to "/sys",
-            "/dev"            to "/dev",
-            "/dev/pts"        to "/dev/pts",
-            context.filesDir.absolutePath to "/host-data"
-        )
-    }
-
     private fun buildProotArgs(
         prootBinary : File,
         rootfsPath  : String,
-        bindMounts  : List<Pair<String, String>>,
         command     : String
-    ): List<String> {
-        return buildList {
-            add(prootBinary.absolutePath)
-            add("--kill-on-exit")
-            add("-r"); add(rootfsPath)
-            add("-w"); add("/root")
+    ): List<String> = buildList {
+        add(prootBinary.absolutePath)
+        add("--kill-on-exit")
+        add("-r"); add(rootfsPath)
+        add("-w"); add("/root")
 
-            bindMounts.forEach { (host, guest) ->
-                add("-b"); add("$host:$guest")
-            }
-
-            // Android-specific: bind the timezone data so date/time works
-            // inside the rootfs without a full system install.
-            add("-b"); add("/system/etc/hosts:/etc/hosts")
-
-            add("--")
-            addAll(command.split(" "))
+        // Core bind mounts
+        listOf("/proc", "/sys", "/dev", "/dev/pts").forEach { path ->
+            add("-b"); add("$path:$path")
         }
+
+        // Expose host data directory inside rootfs for file transfer
+        add("-b"); add("${context.filesDir.absolutePath}:/host-data")
+
+        // Expose timezone data so date/time functions work inside rootfs
+        add("-b"); add("/system/etc/hosts:/etc/hosts")
+
+        add("--")
+        addAll(command.split(" "))
     }
 
     // -------------------------------------------------------------------------
-    // Stream Handling
+    // Stream & Process Monitoring
     // -------------------------------------------------------------------------
 
-    private fun streamOutput(stream: InputStream, prefix: String) {
+    private fun pipeStream(stream: InputStream, prefix: String) {
         Thread {
             try {
                 stream.bufferedReader().forEachLine { line ->
                     appendOutput("$prefix$line")
                 }
             } catch (_: Exception) {
-                // Stream closed on process exit — expected, not an error.
+                // Expected — stream closes when process exits.
             }
-        }.apply {
-            isDaemon = true
-            start()
-        }
+        }.apply { isDaemon = true; start() }
     }
 
-    private fun monitorProcessExit(proc: Process) {
+    private fun watchExit(proc: Process) {
         Thread {
-            val exitCode = proc.waitFor()
-            isRunning    = false
-            appendOutput("[ShellEngine] Process exited with code $exitCode")
-        }.apply {
-            isDaemon = true
-            start()
-        }
+            val code  = proc.waitFor()
+            isRunning = false
+            appendOutput("[ShellEngine-V2] Process exited — code $code")
+        }.apply { isDaemon = true; start() }
     }
 
     // -------------------------------------------------------------------------
-    // Output
+    // Output Dispatch
     // -------------------------------------------------------------------------
 
     private fun appendOutput(line: String) {
