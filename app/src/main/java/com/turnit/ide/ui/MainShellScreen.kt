@@ -238,10 +238,11 @@ fun MainShellScreen(
             return@run false
         }
         consoleLogs.add("\n$ $trimmed\n")
-        if (!shellEngine.sendInput(trimmed)) {
+        if (shellEngine.isSessionActive != true) {
             consoleLogs.add("[Failed to send input to PRoot shell]\n")
             return@run false
         }
+        shellEngine.sendInput(trimmed)
         true
     }
     val handleRunClick = { runCommand(testCompileCommand) }
