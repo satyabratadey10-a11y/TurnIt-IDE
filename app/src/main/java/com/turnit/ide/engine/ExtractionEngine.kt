@@ -50,14 +50,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             true
         } catch (e: Exception) {
-            val errorLog = Log.getStackTraceString(e)
-            appendOutput("\n[REAL ERROR] $errorLog")
-            try {
-                val assetList = targetContext.assets.list("")?.joinToString("\n- ") ?: "None"
-                appendOutput("\n\n[DEBUG] Files physically present in assets folder:\n- $assetList")
-            } catch (listEx: Exception) {
-                appendOutput("\n[DEBUG] Could not list assets: ${listEx.message}")
-            }
+            appendOutput("FATAL: RootFS extraction failed. Reason: ${e.javaClass.simpleName} - ${e.message}")
             Log.e(TAG, "Bootstrap extraction failed", e)
             false
         }
