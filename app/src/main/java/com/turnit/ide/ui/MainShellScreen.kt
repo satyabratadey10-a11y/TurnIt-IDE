@@ -227,12 +227,12 @@ fun MainShellScreen(
             }
             shellEngine.startProot(rootfsDir.absolutePath, "/bin/sh")
         }
-
+    }
 
     LaunchedEffect(isShellReady) {
         startShellSession()
     }
-
+    
     val runCommand: (String) -> Boolean = run@{ command ->
         val trimmed = command.trim()
         if (trimmed.isBlank()) return@run false
