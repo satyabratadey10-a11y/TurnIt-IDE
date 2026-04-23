@@ -8,6 +8,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
 
 class ExtractionEngine(private val appContext: Context? = null) {
     companion object {
@@ -20,15 +21,36 @@ class ExtractionEngine(private val appContext: Context? = null) {
     ): Boolean = withContext(Dispatchers.IO) {
         val targetContext = context ?: return@withContext false
         try {
-            val rootfsDir = File(targetContext.filesDir, "rootfs")
-            if (rootfsDir.exists()) {
+            // FIXED: Matches MainShellScreen's expected path exactly
+            val rootfsDir = File(targetContext.filesDir, "ubuntu-rootfs")
+            
+            // Do not extract if already populated
+            if (rootfsDir.exists() && rootfsDir.list()?.isNotEmpty() == true) {
                 return@withContext true
             }
 
             val assetManager = targetContext.assets
             if (!rootfsDir.exists()) rootfsDir.mkdirs()
 
-            BufferedInputStream(assetManager.open("ubuntu.tar")).use { inputStream ->
+            // Dynamically find any asset starting with "ubuntu"
+            val assetsList = assetManager.list("") ?: emptyArray()
+            val targetAsset = assetsList.firstOrNull { it.startsWith("ubuntu") }
+
+            if (targetAsset == null) {
+                appendOutput("\n[FATAL] No file starting with 'ubuntu' found in assets folder.")
+                return@withContext false
+            }
+
+            appendOutput("\n[DEBUG] Found rootfs asset: $targetAsset. Extracting...")
+
+            var rawStream = assetManager.open(targetAsset)
+            
+            // If it is a gzip file, we MUST decompress it before feeding to TarArchive
+            if (targetAsset.endsWith(".gz")) {
+                rawStream = GZIPInputStream(rawStream)
+            }
+
+            BufferedInputStream(rawStream).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
                     var entry = tarIn.nextTarEntry
                     while (entry != null) {
@@ -50,6 +72,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             true
         } catch (e: Exception) {
+            // Your custom debug block preserved
             val errorLog = Log.getStackTraceString(e)
             appendOutput("\n[REAL ERROR] $errorLog")
             try {
