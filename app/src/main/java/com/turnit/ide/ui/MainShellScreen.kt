@@ -168,13 +168,13 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output ->
                 consoleLogs.add(output)
             }
-            val rootfsPath = File(context.filesDir, "rootfs").absolutePath
-            shellEngine.startProot(rootfsPath)
+            val rootfsPath = File(context.filesDir, "ubuntu-rootfs").absolutePath
+            shellEngine.startProot(rootfsPath, "/bin/sh")
             activeJob = scope.launch {
                 var sawActiveSession = false
                 var consecutiveInactiveChecks = 0
                 while (hasShellStarted) {
-                    val sessionActive = shellEngine.isSessionActive
+                    val sessionActive = shellEngine.isSessionActive == true
                     if (sessionActive) {
                         sawActiveSession = true
                         consecutiveInactiveChecks = 0
@@ -194,6 +194,7 @@ fun MainShellScreen(
             }
         }
     }
+
 
     LaunchedEffect(Unit) {
         val rootfsDir = File(context.filesDir, "rootfs")
