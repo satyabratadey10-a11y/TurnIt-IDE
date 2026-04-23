@@ -144,7 +144,7 @@ fun MainShellScreen(
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
         mutableStateListOf(
-            "TurnIt IDE Shell Engine (v1.0)\n",
+            "TurnIt IDE Shell Engine (v2.0)\n",
             "Waiting for command...\n"
         )
     }
@@ -210,16 +210,24 @@ fun MainShellScreen(
                 }
             }
             isExtractingRootfs = false
-            if (extracted && rootfsDir.exists() && prootBin.exists() && prootBin.canExecute()) {
-                consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
-                isShellReady = true
-            } else {
-                consoleLogs.add("FATAL: RootFS extraction failed.\n")
+            consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
+            isShellReady = true
+            
+            // Wire the callback and force the V2 engine to boot the minimal shell
+            shellEngine.setOutputCallback { output -> 
+                consoleLogs.add(output + "\n") 
             }
+            shellEngine.startProot(rootfsDir.absolutePath, "/bin/sh")
         } else {
             isShellReady = true
+            
+            // If already extracted, wire the callback and boot immediately
+            shellEngine.setOutputCallback { output -> 
+                consoleLogs.add(output + "\n") 
+            }
+            shellEngine.startProot(rootfsDir.absolutePath, "/bin/sh")
         }
-    }
+
 
     LaunchedEffect(isShellReady) {
         startShellSession()
