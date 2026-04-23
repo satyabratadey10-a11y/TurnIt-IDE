@@ -2,7 +2,9 @@ name: TurnIt-IDE Native Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+      - v2-bypass-clean
 
 jobs:
   build:
