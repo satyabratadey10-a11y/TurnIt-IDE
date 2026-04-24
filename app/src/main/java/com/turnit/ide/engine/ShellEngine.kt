@@ -13,15 +13,11 @@ class ShellEngine(private val context: Context) {
     private var outputCallback: ((String) -> Unit)? = null
     private var isRunning = false
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
     fun setOutputCallback(callback: (String) -> Unit) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
+    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
@@ -52,8 +48,6 @@ class ShellEngine(private val context: Context) {
                     put("HOME",             "/root")
                     put("TMPDIR",           "/tmp")
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
-                    put("LD_LIBRARY_PATH",  context.applicationInfo.nativeLibraryDir)
-                    put("PROOT_LOADER",     prootBinary.absolutePath)
                     put("TERM",             "xterm-256color")
                     put("LANG",             "en_US.UTF-8")
                 }
@@ -67,8 +61,7 @@ class ShellEngine(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}\n" +
-                      "  If path still shows filesDir, another call site was not updated."
+            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}"
             Log.e(TAG, msg, e)
             appendOutput(msg)
             isRunning = false
@@ -97,10 +90,6 @@ class ShellEngine(private val context: Context) {
 
     val isSessionActive: Boolean get() = isRunning
 
-    // -------------------------------------------------------------------------
-    // Native Library Bypass — Binary Resolution
-    // -------------------------------------------------------------------------
-
     private fun resolveProotBinary(): File? {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val binary    = File(nativeDir, "libproot.so")
@@ -109,45 +98,29 @@ class ShellEngine(private val context: Context) {
         appendOutput("[ShellEngine-V2] Resolved proot path = ${binary.absolutePath}")
 
         if (!binary.exists()) {
-            appendOutput(
-                "[ShellEngine-V2] FATAL: libproot.so missing.\n" +
-                "  → Confirm jniLibs/arm64-v8a/libproot.so is in source tree."
-            )
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so missing.")
             return null
         }
 
         if (!binary.canExecute()) {
-            appendOutput(
-                "[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false."
-            )
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.")
             return null
         }
 
         return binary
     }
 
-    // -------------------------------------------------------------------------
-    // PRoot Argument Construction
-    // -------------------------------------------------------------------------
-
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
-        add("-0") // FAKE ROOT (UID 0) - Mandatory for Ubuntu Base
+        add("-0")
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
-        
-        // Simplified system mounts to prevent arg-parser crashes
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
-        
-        // Bypass potential symlink extraction failures by calling actual binary
-        add("/usr/bin/bash")
+        // Hardcoded to /bin/sh to guarantee we hit the safest minimum shell
+        add("/bin/sh") 
     }
-
-    // -------------------------------------------------------------------------
-    // Stream & Process Monitoring
-    // -------------------------------------------------------------------------
 
     private fun pipeStream(stream: InputStream, prefix: String) {
         Thread {
@@ -166,10 +139,6 @@ class ShellEngine(private val context: Context) {
             appendOutput("[ShellEngine-V2] Process exited — code $code")
         }.apply { isDaemon = true; start() }
     }
-
-    // -------------------------------------------------------------------------
-    // Output Dispatch
-    // -------------------------------------------------------------------------
 
     private fun appendOutput(line: String) {
         Log.d(TAG, line)
