@@ -143,30 +143,12 @@ class ShellEngine(private val context: Context) {
     // PRoot Argument Construction
     // -------------------------------------------------------------------------
 
-    private fun buildProotArgs(
-        prootBinary : File,
-        rootfsPath  : String,
-        command     : String
-    ): List<String> = buildList {
-        add(prootBinary.absolutePath)
-        add("--kill-on-exit")
-        add("-r"); add(rootfsPath)
-        add("-w"); add("/root")
-
-        // Core bind mounts
-        listOf("/proc", "/sys", "/dev", "/dev/pts").forEach { path ->
-            add("-b"); add("$path:$path")
-        }
-
-        // Expose host data directory inside rootfs for file transfer
-        add("-b"); add("${context.filesDir.absolutePath}:/host-data")
-
-        // Expose timezone data so date/time functions work inside rootfs
-        add("-b"); add("/system/etc/hosts:/etc/hosts")
-
-        add("--")
-        addAll(command.split(" "))
-    }
+    private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
+    // ... other args ...
+    add("-b"); add("/system/etc/hosts:/etc/hosts")
+    add("--") // <--- DELETE THIS EXACT LINE
+    addAll(command.split(" "))
+}
 
     // -------------------------------------------------------------------------
     // Stream & Process Monitoring
