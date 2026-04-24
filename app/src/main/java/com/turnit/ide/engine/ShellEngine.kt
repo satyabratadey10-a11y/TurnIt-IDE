@@ -144,11 +144,17 @@ class ShellEngine(private val context: Context) {
     // -------------------------------------------------------------------------
 
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
-    // ... other args ...
-    add("-b"); add("/system/etc/hosts:/etc/hosts")
-    add("--") // <--- DELETE THIS EXACT LINE
-    addAll(command.split(" "))
-}
+        add(prootBinary.absolutePath)
+        add("--kill-on-exit")
+        add("-r"); add(rootfsPath)
+        add("-w"); add("/root")
+        listOf("/proc", "/sys", "/dev", "/dev/pts").forEach { path ->
+            add("-b"); add("$path:$path")
+        }
+        add("-b"); add("${context.filesDir.absolutePath}:/host-data")
+        add("-b"); add("/system/etc/hosts:/etc/hosts")
+        addAll(command.split(" "))
+    }
 
     // -------------------------------------------------------------------------
     // Stream & Process Monitoring
