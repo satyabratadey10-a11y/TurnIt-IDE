@@ -21,14 +21,7 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    /**
-     * Starts a PRoot session using the Native Library Bypass.
-     * The binary is executed exclusively from nativeLibraryDir — never filesDir.
-     *
-     * @param rootfsPath Absolute path to the extracted Ubuntu rootfs.
-     * @param command    Entry command inside the PRoot environment.
-     */
-    fun startProot(rootfsPath: String, command: String = "/bin/bash") {
+    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
@@ -56,8 +49,8 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 environment().apply {
                     put("PROOT_NO_SECCOMP", "1")
-                    put("HOME",             context.filesDir.absolutePath)
-                    put("TMPDIR",           context.cacheDir.absolutePath)
+                    put("HOME",             "/root")
+                    put("TMPDIR",           "/tmp")
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
                     put("LD_LIBRARY_PATH",  context.applicationInfo.nativeLibraryDir)
                     put("PROOT_LOADER",     prootBinary.absolutePath)
@@ -106,7 +99,6 @@ class ShellEngine(private val context: Context) {
 
     // -------------------------------------------------------------------------
     // Native Library Bypass — Binary Resolution
-    // filesDir is NEVER used for the binary path.
     // -------------------------------------------------------------------------
 
     private fun resolveProotBinary(): File? {
@@ -119,19 +111,14 @@ class ShellEngine(private val context: Context) {
         if (!binary.exists()) {
             appendOutput(
                 "[ShellEngine-V2] FATAL: libproot.so missing.\n" +
-                "  → Confirm jniLibs/arm64-v8a/libproot.so is in source tree.\n" +
-                "  → Confirm extractNativeLibs=\"true\" in AndroidManifest.xml.\n" +
-                "  → Confirm no packagingOptions block is compressing the .so."
+                "  → Confirm jniLibs/arm64-v8a/libproot.so is in source tree."
             )
             return null
         }
 
         if (!binary.canExecute()) {
             appendOutput(
-                "[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.\n" +
-                "  → OEM SELinux is likely denying exec on this path.\n" +
-                "  → Run: adb shell ls -lZ \"${binary.absolutePath}\"\n" +
-                "  → Run: adb logcat | grep avc  — look for execmod or execute denial."
+                "[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false."
             )
             return null
         }
@@ -145,15 +132,17 @@ class ShellEngine(private val context: Context) {
 
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
-        add("--kill-on-exit")
+        add("-0") // FAKE ROOT (UID 0) - Mandatory for Ubuntu Base
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
-        listOf("/proc", "/sys", "/dev", "/dev/pts").forEach { path ->
-            add("-b"); add("$path:$path")
-        }
-        add("-b"); add("${context.filesDir.absolutePath}:/host-data")
-        add("-b"); add("/system/etc/hosts:/etc/hosts")
-        addAll(command.split(" "))
+        
+        // Simplified system mounts to prevent arg-parser crashes
+        add("-b"); add("/dev")
+        add("-b"); add("/proc")
+        add("-b"); add("/sys")
+        
+        // Bypass potential symlink extraction failures by calling actual binary
+        add("/usr/bin/bash")
     }
 
     // -------------------------------------------------------------------------
@@ -166,9 +155,7 @@ class ShellEngine(private val context: Context) {
                 stream.bufferedReader().forEachLine { line ->
                     appendOutput("$prefix$line")
                 }
-            } catch (_: Exception) {
-                // Expected — stream closes when process exits.
-            }
+            } catch (_: Exception) {}
         }.apply { isDaemon = true; start() }
     }
 
