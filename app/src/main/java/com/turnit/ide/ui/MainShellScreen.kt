@@ -197,9 +197,8 @@ fun MainShellScreen(
 
 
     LaunchedEffect(Unit) {
-        val rootfsDir = File(context.filesDir, "rootfs")
-        val prootBin = File(context.filesDir, "proot")
-        val shouldExtract = !rootfsDir.exists() || !prootBin.exists() || !prootBin.canExecute()
+        val rootfsDir = File(context.filesDir, "ubuntu-rootfs")
+        val shouldExtract = !rootfsDir.exists() || rootfsDir.listFiles()?.isEmpty() == true
 
         if (shouldExtract) {
             activePane = IdePane.TERMINAL
