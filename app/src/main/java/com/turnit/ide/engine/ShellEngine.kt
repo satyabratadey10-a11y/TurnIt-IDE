@@ -110,17 +110,27 @@ class ShellEngine(private val context: Context) {
         return binary
     }
 
-    private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
+        private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
         add("-0")
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
+        
+        // Standard Linux pseudo-filesystems
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
-        // Hardcoded to /bin/sh to guarantee we hit the safest minimum shell
-        add("/bin/sh") 
+
+        // THE SYMLINK BYPASS
+        // Android blocks physical symlinks. We force PRoot to emulate them in RAM.
+        add("-b"); add("$rootfsPath/usr/bin:/bin")
+        add("-b"); add("$rootfsPath/usr/lib:/lib")
+        add("-b"); add("$rootfsPath/usr/sbin:/sbin")
+
+        // Target the physical bash binary directly
+        add("/usr/bin/bash")
     }
+
 
     private fun pipeStream(stream: InputStream, prefix: String) {
         Thread {
