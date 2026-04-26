@@ -1,6 +1,7 @@
 package com.turnit.ide.engine
 
 import android.content.Context
+import android.system.Os
 import android.util.Log
 import java.io.File
 import java.io.InputStream
@@ -17,13 +18,33 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
+    fun startProot(rootfsPath: String, command: String = "/bin/bash") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
         }
 
         val prootBinary = resolveProotBinary() ?: return
+
+        // ---------------------------------------------------------------------
+        // OS SYMLINK REPAIR (VIVO Y51a EXT4 FIX)
+        // Android's Java tar extractor silently drops core Ubuntu symlinks.
+        // We physically reconstruct them in RAM/Disk so the Linux kernel can 
+        // locate bash and its dynamic libraries, preventing Code 255.
+        // ---------------------------------------------------------------------
+        try {
+            val r = File(rootfsPath)
+            listOf("bin" to "usr/bin", "lib" to "usr/lib", "sbin" to "usr/sbin").forEach { (linkName, targetPath) ->
+                val linkFile = File(r, linkName)
+                if (!linkFile.exists()) {
+                    linkFile.delete() // Clear if broken
+                    Os.symlink(targetPath, linkFile.absolutePath)
+                }
+            }
+            appendOutput("[ShellEngine-V2] Core OS symlinks physically repaired.")
+        } catch (e: Exception) {
+            appendOutput("[ShellEngine-V2] Symlink repair warning: ${e.message}")
+        }
 
         val prootArgs = buildProotArgs(
             prootBinary = prootBinary,
@@ -45,7 +66,6 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 environment().apply {
                     put("PROOT_NO_SECCOMP", "1")
-                    put("PROOT_VERBOSE",    "1") // <--- FORCES PROOT TO LOG FATAL ERRORS
                     put("HOME",             "/root")
                     put("TMPDIR",           "/tmp")
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
@@ -113,14 +133,13 @@ class ShellEngine(private val context: Context) {
 
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
-        add("--link2symlink") // <--- TERMUX SYMLINK EMULATION
         add("-0")
         add("-r"); add(rootfsPath)
-        add("-w"); add("/") // <--- SAFE WORKING DIRECTORY
+        add("-w"); add("/root")
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
-        add("/bin/sh") // <--- SAFEST MINIMAL SHELL
+        addAll(command.split(" "))
     }
 
     private fun pipeStream(stream: InputStream, prefix: String) {
