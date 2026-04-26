@@ -45,6 +45,7 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 environment().apply {
                     put("PROOT_NO_SECCOMP", "1")
+                    put("PROOT_VERBOSE",    "1") // <--- FORCES PROOT TO LOG FATAL ERRORS
                     put("HOME",             "/root")
                     put("TMPDIR",           "/tmp")
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
@@ -110,27 +111,17 @@ class ShellEngine(private val context: Context) {
         return binary
     }
 
-        private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
+    private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
+        add("--link2symlink") // <--- TERMUX SYMLINK EMULATION
         add("-0")
         add("-r"); add(rootfsPath)
-        add("-w"); add("/root")
-        
-        // Standard Linux pseudo-filesystems
+        add("-w"); add("/") // <--- SAFE WORKING DIRECTORY
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
-
-        // THE SYMLINK BYPASS
-        // Android blocks physical symlinks. We force PRoot to emulate them in RAM.
-        add("-b"); add("$rootfsPath/usr/bin:/bin")
-        add("-b"); add("$rootfsPath/usr/lib:/lib")
-        add("-b"); add("$rootfsPath/usr/sbin:/sbin")
-
-        // Target the physical bash binary directly
-        add("/usr/bin/bash")
+        add("/bin/sh") // <--- SAFEST MINIMAL SHELL
     }
-
 
     private fun pipeStream(stream: InputStream, prefix: String) {
         Thread {
