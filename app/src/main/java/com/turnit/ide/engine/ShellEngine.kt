@@ -13,22 +13,11 @@ class ShellEngine(private val context: Context) {
     private var outputCallback: ((String) -> Unit)? = null
     private var isRunning = false
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
     fun setOutputCallback(callback: (String) -> Unit) {
         outputCallback = callback
     }
 
-    /**
-     * Starts a PRoot session using the Native Library Bypass.
-     * The binary is executed exclusively from nativeLibraryDir — never filesDir.
-     *
-     * @param rootfsPath Absolute path to the extracted Ubuntu rootfs.
-     * @param command    Entry command inside the PRoot environment.
-     */
-    fun startProot(rootfsPath: String, command: String = "/bin/bash") {
+    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
@@ -56,11 +45,9 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 environment().apply {
                     put("PROOT_NO_SECCOMP", "1")
-                    put("HOME",             context.filesDir.absolutePath)
-                    put("TMPDIR",           context.cacheDir.absolutePath)
+                    put("HOME",             "/root")
+                    put("TMPDIR",           "/tmp")
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
-                    put("LD_LIBRARY_PATH",  context.applicationInfo.nativeLibraryDir)
-                    put("PROOT_LOADER",     prootBinary.absolutePath)
                     put("TERM",             "xterm-256color")
                     put("LANG",             "en_US.UTF-8")
                 }
@@ -74,8 +61,7 @@ class ShellEngine(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}\n" +
-                      "  If path still shows filesDir, another call site was not updated."
+            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}"
             Log.e(TAG, msg, e)
             appendOutput(msg)
             isRunning = false
@@ -104,55 +90,34 @@ class ShellEngine(private val context: Context) {
 
     val isSessionActive: Boolean get() = isRunning
 
-    // -------------------------------------------------------------------------
-    // Native Library Bypass — Binary Resolution
-    // filesDir is NEVER used for the binary path.
-    // -------------------------------------------------------------------------
-
     private fun resolveProotBinary(): File? {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val binary    = File(nativeDir, "libproot.so")
 
-        appendOutput("[ShellEngine-V2] nativeLibraryDir   = $nativeDir")
-        appendOutput("[ShellEngine-V2] Resolved proot path = ${binary.absolutePath}")
-
         if (!binary.exists()) {
-            appendOutput(
-                "[ShellEngine-V2] FATAL: libproot.so missing.\n" +
-                "  → Confirm jniLibs/arm64-v8a/libproot.so is in source tree.\n" +
-                "  → Confirm extractNativeLibs=\"true\" in AndroidManifest.xml.\n" +
-                "  → Confirm no packagingOptions block is compressing the .so."
-            )
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so missing.")
             return null
         }
 
         if (!binary.canExecute()) {
-            appendOutput(
-                "[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.\n" +
-                "  → OEM SELinux is likely denying exec on this path.\n" +
-                "  → Run: adb shell ls -lZ \"${binary.absolutePath}\"\n" +
-                "  → Run: adb logcat | grep avc  — look for execmod or execute denial."
-            )
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.")
             return null
         }
 
         return binary
     }
 
-    // -------------------------------------------------------------------------
-    // PRoot Argument Construction
-    // -------------------------------------------------------------------------
-
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
-    // ... other args ...
-    add("-b"); add("/system/etc/hosts:/etc/hosts")
-    add("--") // <--- DELETE THIS EXACT LINE
-    addAll(command.split(" "))
-}
-
-    // -------------------------------------------------------------------------
-    // Stream & Process Monitoring
-    // -------------------------------------------------------------------------
+        add(prootBinary.absolutePath)
+        add("--link2symlink") // <--- THIS IS THE MAGIC FLAG YOU MISSED
+        add("-0")
+        add("-r"); add(rootfsPath)
+        add("-w"); add("/root")
+        add("-b"); add("/dev")
+        add("-b"); add("/proc")
+        add("-b"); add("/sys")
+        addAll(command.split(" "))
+    }
 
     private fun pipeStream(stream: InputStream, prefix: String) {
         Thread {
@@ -160,9 +125,7 @@ class ShellEngine(private val context: Context) {
                 stream.bufferedReader().forEachLine { line ->
                     appendOutput("$prefix$line")
                 }
-            } catch (_: Exception) {
-                // Expected — stream closes when process exits.
-            }
+            } catch (_: Exception) {}
         }.apply { isDaemon = true; start() }
     }
 
@@ -173,10 +136,6 @@ class ShellEngine(private val context: Context) {
             appendOutput("[ShellEngine-V2] Process exited — code $code")
         }.apply { isDaemon = true; start() }
     }
-
-    // -------------------------------------------------------------------------
-    // Output Dispatch
-    // -------------------------------------------------------------------------
 
     private fun appendOutput(line: String) {
         Log.d(TAG, line)
