@@ -1,7 +1,7 @@
 package com.turnit.ide.engine
 
 import android.content.Context
-import android.system.Os
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -26,7 +26,6 @@ class ExtractionEngine(private val appContext: Context? = null) {
             val assetManager = targetContext.assets
             rootfsDir.mkdirs()
 
-            // Dynamically locate any ubuntu tarball
             val targetAsset = assetManager.list("")?.firstOrNull { it.startsWith("ubuntu") }
             if (targetAsset == null) {
                 appendOutput("\n[FATAL] Missing 'ubuntu' tarball in assets.")
@@ -34,7 +33,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
             }
 
             appendOutput("\n[DEBUG] Found rootfs: $targetAsset")
-            appendOutput("\n[DEBUG] Extracting... (This takes a minute. Please wait!)")
+            appendOutput("\n[DEBUG] Extracting OS... (Bypassing Android Symlink Blocks)")
 
             var rawStream = assetManager.open(targetAsset)
             if (targetAsset.endsWith(".gz")) {
@@ -51,8 +50,13 @@ class ExtractionEngine(private val appContext: Context? = null) {
                             if (entry.isDirectory) {
                                 destFile.mkdirs()
                             } else if (entry.isSymbolicLink) {
-                                // Native Android symlink handling
-                                try { Os.symlink(entry.linkName, destFile.absolutePath) } catch (_: Exception) {}
+                                // THE TERMUX LINK2SYMLINK BYPASS
+                                // Android blocks real symlinks. We write a plain text file containing
+                                // the magic string. PRoot will read this and emulate the symlink in RAM.
+                                destFile.parentFile?.mkdirs()
+                                FileOutputStream(destFile).use { out ->
+                                    out.write(("!<symlink>" + entry.linkName).toByteArray())
+                                }
                             } else if (entry.isFile) {
                                 destFile.parentFile?.mkdirs()
                                 FileOutputStream(destFile).use { out -> tarIn.copyTo(out) }
@@ -62,9 +66,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
                             if (count % 2000 == 0) {
                                 appendOutput("\n[DEBUG] Extracted $count files...")
                             }
-                        } catch (_: Exception) {
-                            // Silently skip broken hardlinks so the installation doesn't die
-                        }
+                        } catch (_: Exception) {}
                         entry = tarIn.nextTarEntry
                     }
                 }
@@ -73,7 +75,6 @@ class ExtractionEngine(private val appContext: Context? = null) {
             appendOutput("\n[DEBUG] Extraction complete!")
             true
         } catch (e: Exception) {
-            // Truncate the error so the UI doesn't crash trying to render it!
             val shortError = e.toString().take(250)
             appendOutput("\n[REAL ERROR] $shortError")
             false
