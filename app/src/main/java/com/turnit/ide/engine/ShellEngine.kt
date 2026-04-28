@@ -17,7 +17,7 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
+    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
@@ -25,10 +25,13 @@ class ShellEngine(private val context: Context) {
 
         val prootBinary = resolveProotBinary() ?: return
 
+        // Bypass fragile symlink chains (/bin/sh) by targeting the physical bash binary
+        val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
+
         val prootArgs = buildProotArgs(
             prootBinary = prootBinary,
             rootfsPath  = rootfsPath,
-            command     = command
+            command     = safeCommand
         )
 
         appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
@@ -50,6 +53,8 @@ class ShellEngine(private val context: Context) {
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
                     put("TERM",             "xterm-256color")
                     put("LANG",             "en_US.UTF-8")
+                    // MANDATORY: Linux shells require a PATH to resolve binaries
+                    put("PATH",             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") 
                 }
             }
 
@@ -109,7 +114,7 @@ class ShellEngine(private val context: Context) {
 
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
-        add("--link2symlink") // <--- THIS IS THE MAGIC FLAG YOU MISSED
+        add("--link2symlink") 
         add("-0")
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
