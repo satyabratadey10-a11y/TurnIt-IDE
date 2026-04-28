@@ -1,7 +1,6 @@
 package com.turnit.ide.engine
 
 import android.content.Context
-import android.system.Os
 import android.util.Log
 import java.io.File
 import java.io.InputStream
@@ -18,33 +17,13 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/bin/bash") {
+    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
         }
 
         val prootBinary = resolveProotBinary() ?: return
-
-        // ---------------------------------------------------------------------
-        // OS SYMLINK REPAIR (VIVO Y51a EXT4 FIX)
-        // Android's Java tar extractor silently drops core Ubuntu symlinks.
-        // We physically reconstruct them in RAM/Disk so the Linux kernel can 
-        // locate bash and its dynamic libraries, preventing Code 255.
-        // ---------------------------------------------------------------------
-        try {
-            val r = File(rootfsPath)
-            listOf("bin" to "usr/bin", "lib" to "usr/lib", "sbin" to "usr/sbin").forEach { (linkName, targetPath) ->
-                val linkFile = File(r, linkName)
-                if (!linkFile.exists()) {
-                    linkFile.delete() // Clear if broken
-                    Os.symlink(targetPath, linkFile.absolutePath)
-                }
-            }
-            appendOutput("[ShellEngine-V2] Core OS symlinks physically repaired.")
-        } catch (e: Exception) {
-            appendOutput("[ShellEngine-V2] Symlink repair warning: ${e.message}")
-        }
 
         val prootArgs = buildProotArgs(
             prootBinary = prootBinary,
@@ -115,9 +94,6 @@ class ShellEngine(private val context: Context) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val binary    = File(nativeDir, "libproot.so")
 
-        appendOutput("[ShellEngine-V2] nativeLibraryDir   = $nativeDir")
-        appendOutput("[ShellEngine-V2] Resolved proot path = ${binary.absolutePath}")
-
         if (!binary.exists()) {
             appendOutput("[ShellEngine-V2] FATAL: libproot.so missing.")
             return null
@@ -133,6 +109,7 @@ class ShellEngine(private val context: Context) {
 
     private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
         add(prootBinary.absolutePath)
+        add("--link2symlink") // <--- THIS IS THE MAGIC FLAG YOU MISSED
         add("-0")
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
