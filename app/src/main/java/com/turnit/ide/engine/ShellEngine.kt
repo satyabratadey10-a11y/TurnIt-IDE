@@ -17,7 +17,7 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
+    fun startProot(rootfsPath: String, command: String = "/system/bin/sh") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
             return
@@ -25,34 +25,14 @@ class ShellEngine(private val context: Context) {
 
         val prootBinary = resolveProotBinary() ?: return
 
-        // ---------------------------------------------------------------------
-        // THE MOUNT-POINT BYPASS (CODE 255 FIX)
-        // The Linux kernel's ELF loader crashes if core directories (/lib) are text files.
-        // We delete the fake text symlinks and replace them with physical empty folders.
-        // PRoot will then bind-mount the real /usr/ folders over them in RAM.
-        // ---------------------------------------------------------------------
-        try {
-            val r = File(rootfsPath)
-            listOf("bin", "lib", "sbin", "lib64").forEach { dirName ->
-                val mountPoint = File(r, dirName)
-                if (mountPoint.isFile) mountPoint.delete() // Remove the !<symlink> text file
-                if (!mountPoint.exists()) mountPoint.mkdirs() // Create empty folder for PRoot to bind over
-            }
-            appendOutput("[ShellEngine-V2] Mount points dynamically prepped.")
-        } catch (e: Exception) {
-            appendOutput("[ShellEngine-V2] Mount point prep warning: ${e.message}")
-        }
-
-        val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
-
         val prootArgs = buildProotArgs(
             prootBinary = prootBinary,
             rootfsPath  = rootfsPath,
-            command     = safeCommand
+            command     = command
         )
 
         appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
-        appendOutput("[ShellEngine-V2] Launching PRoot session...")
+        appendOutput("[ShellEngine-V2] Launching PRoot Diagnostic Shell...")
         appendOutput("[ShellEngine-V2] Binary path : ${prootBinary.absolutePath}")
         appendOutput("[ShellEngine-V2] canExecute(): ${prootBinary.canExecute()}")
         appendOutput("[ShellEngine-V2] Rootfs path : $rootfsPath")
@@ -70,7 +50,8 @@ class ShellEngine(private val context: Context) {
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
                     put("TERM",             "xterm-256color")
                     put("LANG",             "en_US.UTF-8")
-                    put("PATH",             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") 
+                    // Inject Android host paths so the rescue shell can use native commands
+                    put("PATH",             "/system/bin:/system/xbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") 
                 }
             }
 
@@ -133,20 +114,16 @@ class ShellEngine(private val context: Context) {
         add("--link2symlink") 
         add("-0")
         add("-r"); add(rootfsPath)
-        add("-w"); add("/root")
+        add("-w"); add("/")
         
         // Standard System Mounts
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
+        add("-b"); add("/system") // Explicitly map the Android host to ensure the rescue shell boots
         
-        // Core Architecture Mounts (Fixes ELF Loader Code 255)
-        add("-b"); add("$rootfsPath/usr/bin:/bin")
-        add("-b"); add("$rootfsPath/usr/lib:/lib")
-        add("-b"); add("$rootfsPath/usr/sbin:/sbin")
-        add("-b"); add("$rootfsPath/usr/lib:/lib64") // aarch64 dynamic linker fallback
-        
-        addAll(command.split(" "))
+        // Diagnostic Boot: Bypass the broken guest OS completely
+        add("/system/bin/sh")
     }
 
     private fun pipeStream(stream: InputStream, prefix: String) {
