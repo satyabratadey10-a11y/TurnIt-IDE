@@ -25,7 +25,24 @@ class ShellEngine(private val context: Context) {
 
         val prootBinary = resolveProotBinary() ?: return
 
-        // Bypass fragile symlink chains (/bin/sh) by targeting the physical bash binary
+        // ---------------------------------------------------------------------
+        // THE MOUNT-POINT BYPASS (CODE 255 FIX)
+        // The Linux kernel's ELF loader crashes if core directories (/lib) are text files.
+        // We delete the fake text symlinks and replace them with physical empty folders.
+        // PRoot will then bind-mount the real /usr/ folders over them in RAM.
+        // ---------------------------------------------------------------------
+        try {
+            val r = File(rootfsPath)
+            listOf("bin", "lib", "sbin", "lib64").forEach { dirName ->
+                val mountPoint = File(r, dirName)
+                if (mountPoint.isFile) mountPoint.delete() // Remove the !<symlink> text file
+                if (!mountPoint.exists()) mountPoint.mkdirs() // Create empty folder for PRoot to bind over
+            }
+            appendOutput("[ShellEngine-V2] Mount points dynamically prepped.")
+        } catch (e: Exception) {
+            appendOutput("[ShellEngine-V2] Mount point prep warning: ${e.message}")
+        }
+
         val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
 
         val prootArgs = buildProotArgs(
@@ -53,7 +70,6 @@ class ShellEngine(private val context: Context) {
                     put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
                     put("TERM",             "xterm-256color")
                     put("LANG",             "en_US.UTF-8")
-                    // MANDATORY: Linux shells require a PATH to resolve binaries
                     put("PATH",             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") 
                 }
             }
@@ -118,9 +134,18 @@ class ShellEngine(private val context: Context) {
         add("-0")
         add("-r"); add(rootfsPath)
         add("-w"); add("/root")
+        
+        // Standard System Mounts
         add("-b"); add("/dev")
         add("-b"); add("/proc")
         add("-b"); add("/sys")
+        
+        // Core Architecture Mounts (Fixes ELF Loader Code 255)
+        add("-b"); add("$rootfsPath/usr/bin:/bin")
+        add("-b"); add("$rootfsPath/usr/lib:/lib")
+        add("-b"); add("$rootfsPath/usr/sbin:/sbin")
+        add("-b"); add("$rootfsPath/usr/lib:/lib64") // aarch64 dynamic linker fallback
+        
         addAll(command.split(" "))
     }
 
