@@ -2,82 +2,173 @@ package com.turnit.ide.engine
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.util.zip.GZIPInputStream
+import java.io.InputStream
 
-class ExtractionEngine(private val appContext: Context? = null) {
-    suspend fun bootstrapEnvironment(
-        context: Context? = appContext,
-        appendOutput: (String) -> Unit = {}
-    ): Boolean = withContext(Dispatchers.IO) {
-        val targetContext = context ?: return@withContext false
+private const val TAG = "ShellEngine"
+
+class ShellEngine(private val context: Context) {
+
+    private var process: Process? = null
+    private var outputCallback: ((String) -> Unit)? = null
+    private var isRunning = false
+
+    fun setOutputCallback(callback: (String) -> Unit) {
+        outputCallback = callback
+    }
+
+    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
+        if (isRunning) {
+            appendOutput("[ShellEngine-V2] Session already active. Call stop() first.")
+            return
+        }
+
+        val prootBinary = resolveProotBinary() ?: return
+
+        // ---------------------------------------------------------------------
+        // THE MOUNT-POINT BYPASS (CODE 255 FIX)
+        // The Linux kernel's ELF loader crashes if core directories (/lib) are text files.
+        // We delete the fake text symlinks and replace them with physical empty folders.
+        // PRoot will then bind-mount the real /usr/ folders over them in RAM.
+        // ---------------------------------------------------------------------
         try {
-            val rootfsDir = File(targetContext.filesDir, "ubuntu-rootfs")
-            
-            if (rootfsDir.exists() && rootfsDir.list()?.isNotEmpty() == true) {
-                return@withContext true
+            val r = File(rootfsPath)
+            listOf("bin", "lib", "sbin", "lib64").forEach { dirName ->
+                val mountPoint = File(r, dirName)
+                if (mountPoint.isFile) mountPoint.delete() // Remove the !<symlink> text file
+                if (!mountPoint.exists()) mountPoint.mkdirs() // Create empty folder for PRoot to bind over
             }
+            appendOutput("[ShellEngine-V2] Mount points dynamically prepped.")
+        } catch (e: Exception) {
+            appendOutput("[ShellEngine-V2] Mount point prep warning: ${e.message}")
+        }
 
-            val assetManager = targetContext.assets
-            rootfsDir.mkdirs()
+        val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
 
-            val targetAsset = assetManager.list("")?.firstOrNull { it.startsWith("ubuntu") }
-            if (targetAsset == null) {
-                appendOutput("\n[FATAL] Missing 'ubuntu' tarball in assets.")
-                return@withContext false
-            }
+        val prootArgs = buildProotArgs(
+            prootBinary = prootBinary,
+            rootfsPath  = rootfsPath,
+            command     = safeCommand
+        )
 
-            appendOutput("\n[DEBUG] Found rootfs: $targetAsset")
-            appendOutput("\n[DEBUG] Extracting OS... (Bypassing Android Symlink Blocks)")
+        appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
+        appendOutput("[ShellEngine-V2] Launching PRoot session...")
+        appendOutput("[ShellEngine-V2] Binary path : ${prootBinary.absolutePath}")
+        appendOutput("[ShellEngine-V2] canExecute(): ${prootBinary.canExecute()}")
+        appendOutput("[ShellEngine-V2] Rootfs path : $rootfsPath")
+        appendOutput("[ShellEngine-V2] Full command: ${prootArgs.joinToString(" ")}")
+        appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
 
-            var rawStream = assetManager.open(targetAsset)
-            if (targetAsset.endsWith(".gz")) {
-                rawStream = GZIPInputStream(rawStream)
-            }
-
-            BufferedInputStream(rawStream).use { inputStream ->
-                TarArchiveInputStream(inputStream).use { tarIn ->
-                    var entry = tarIn.nextTarEntry
-                    var count = 0
-                    while (entry != null) {
-                        try {
-                            val destFile = File(rootfsDir, entry.name)
-                            if (entry.isDirectory) {
-                                destFile.mkdirs()
-                            } else if (entry.isSymbolicLink) {
-                                // THE TERMUX LINK2SYMLINK BYPASS
-                                // Android blocks real symlinks. We write a plain text file containing
-                                // the magic string. PRoot will read this and emulate the symlink in RAM.
-                                destFile.parentFile?.mkdirs()
-                                FileOutputStream(destFile).use { out ->
-                                    out.write(("!<symlink>" + entry.linkName).toByteArray())
-                                }
-                            } else if (entry.isFile) {
-                                destFile.parentFile?.mkdirs()
-                                FileOutputStream(destFile).use { out -> tarIn.copyTo(out) }
-                                destFile.setExecutable(true)
-                            }
-                            count++
-                            if (count % 2000 == 0) {
-                                appendOutput("\n[DEBUG] Extracted $count files...")
-                            }
-                        } catch (_: Exception) {}
-                        entry = tarIn.nextTarEntry
-                    }
+        try {
+            val pb = ProcessBuilder(prootArgs).apply {
+                directory(context.filesDir)
+                redirectErrorStream(false)
+                environment().apply {
+                    put("PROOT_NO_SECCOMP", "1")
+                    put("HOME",             "/root")
+                    put("TMPDIR",           "/tmp")
+                    put("PROOT_TMP_DIR",    context.cacheDir.absolutePath)
+                    put("TERM",             "xterm-256color")
+                    put("LANG",             "en_US.UTF-8")
+                    put("PATH",             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") 
                 }
             }
-            
-            appendOutput("\n[DEBUG] Extraction complete!")
-            true
+
+            process = pb.start().also { proc ->
+                isRunning = true
+                pipeStream(proc.inputStream, prefix = "")
+                pipeStream(proc.errorStream, prefix = "[ERR] ")
+                watchExit(proc)
+            }
+
         } catch (e: Exception) {
-            val shortError = e.toString().take(250)
-            appendOutput("\n[REAL ERROR] $shortError")
-            false
+            val msg = "[ShellEngine-V2] FATAL: ProcessBuilder threw — ${e.message}"
+            Log.e(TAG, msg, e)
+            appendOutput(msg)
+            isRunning = false
         }
+    }
+
+    fun sendInput(text: String) {
+        if (process == null || !isRunning) {
+            appendOutput("[ShellEngine-V2] No active session.")
+            return
+        }
+        try {
+            process!!.outputStream.write((text + "\n").toByteArray())
+            process!!.outputStream.flush()
+        } catch (e: Exception) {
+            appendOutput("[ShellEngine-V2] Input write failed: ${e.message}")
+        }
+    }
+
+    fun stop() {
+        process?.destroy()
+        process   = null
+        isRunning = false
+        appendOutput("[ShellEngine-V2] Session stopped.")
+    }
+
+    val isSessionActive: Boolean get() = isRunning
+
+    private fun resolveProotBinary(): File? {
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val binary    = File(nativeDir, "libproot.so")
+
+        if (!binary.exists()) {
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so missing.")
+            return null
+        }
+
+        if (!binary.canExecute()) {
+            appendOutput("[ShellEngine-V2] FATAL: libproot.so exists but canExecute()=false.")
+            return null
+        }
+
+        return binary
+    }
+
+    private fun buildProotArgs(prootBinary: File, rootfsPath: String, command: String): List<String> = buildList {
+        add(prootBinary.absolutePath)
+        add("--link2symlink") 
+        add("-0")
+        add("-r"); add(rootfsPath)
+        add("-w"); add("/root")
+        
+        // Standard System Mounts
+        add("-b"); add("/dev")
+        add("-b"); add("/proc")
+        add("-b"); add("/sys")
+        
+        // Core Architecture Mounts (Fixes ELF Loader Code 255)
+        add("-b"); add("$rootfsPath/usr/bin:/bin")
+        add("-b"); add("$rootfsPath/usr/lib:/lib")
+        add("-b"); add("$rootfsPath/usr/sbin:/sbin")
+        add("-b"); add("$rootfsPath/usr/lib:/lib64") // aarch64 dynamic linker fallback
+        
+        addAll(command.split(" "))
+    }
+
+    private fun pipeStream(stream: InputStream, prefix: String) {
+        Thread {
+            try {
+                stream.bufferedReader().forEachLine { line ->
+                    appendOutput("$prefix$line")
+                }
+            } catch (_: Exception) {}
+        }.apply { isDaemon = true; start() }
+    }
+
+    private fun watchExit(proc: Process) {
+        Thread {
+            val code  = proc.waitFor()
+            isRunning = false
+            appendOutput("[ShellEngine-V2] Process exited — code $code")
+        }.apply { isDaemon = true; start() }
+    }
+
+    private fun appendOutput(line: String) {
+        Log.d(TAG, line)
+        outputCallback?.invoke(line)
     }
 }
