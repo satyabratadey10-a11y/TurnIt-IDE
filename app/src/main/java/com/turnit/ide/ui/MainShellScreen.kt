@@ -217,7 +217,8 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output -> 
                 consoleLogs.add(output + "\n") 
             }
-            shellEngine.startProot(rootfsDir.absolutePath, "/bin/sh")
+            shellEngine.startProot(rootfsDir.absolutePath, "/usr/bin/bash")
+
         } else {
             isShellReady = true
             
@@ -225,7 +226,8 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output -> 
                 consoleLogs.add(output + "\n") 
             }
-            shellEngine.startProot(rootfsDir.absolutePath, "/bin/sh")
+            shellEngine.startProot(rootfsDir.absolutePath, "/usr/bin/bash")
+
         }
     }
 
