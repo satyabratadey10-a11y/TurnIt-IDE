@@ -3,7 +3,7 @@ name: TurnIt-IDE Native Build
 on:
   push:
     branches:
-      - main1
+      - Main1
 
 jobs:
   build:
