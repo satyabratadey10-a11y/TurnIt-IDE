@@ -17,7 +17,7 @@ class ShellEngine(private val context: Context) {
         outputCallback = callback
     }
 
-    fun startProot(rootfsPath: String, command: String = "/bin/sh") {
+    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
         if (isRunning) {
             appendOutput("[ShellEngine-V2] Session already active.")
             return
